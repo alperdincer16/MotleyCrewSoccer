@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Motley Crew Soccer</title>
+<meta name="description" content="Fast 3v3 online arena soccer with custom rules and boosts.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='14' fill='%23fff'/%3E%3Cpath d='M16 6l5 4-2 6h-6l-2-6z' fill='%23111'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+<!-- Owner: Sam Okafor (T-12 lobby, T-13 pre-match, T-14 HUD/results) -->
+
+<header id="topbar">
+  <div class="brand"><span class="ball">⚽</span> Motley Crew Soccer</div>
+  <div class="me">
+    <label>You are <input id="nameInput" maxlength="16" spellcheck="false" autocomplete="off"></label>
+    <span id="connDot" class="dot" title="connection"></span>
+  </div>
+</header>
+
+<!-- ============ LOBBY ============ -->
+<main id="screen-lobby" class="screen active">
+  <section class="hero">
+    <h1>3 v 3. Three minutes. Boosts on.</h1>
+    <p>Pick a game below, or start your own and invite friends. Every empty position is played by a bot, so you never wait.</p>
+    <div class="hero-actions">
+      <button id="btnCreate" class="primary big">Create a game</button>
+      <form id="joinCodeForm" class="inline">
+        <input id="joinCode" placeholder="Invite code" maxlength="8" autocomplete="off" spellcheck="false">
+        <button type="submit">Join by code</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="games">
+    <div class="section-head">
+      <h2>Games</h2>
+      <span id="gameCount" class="muted"></span>
+    </div>
+    <div id="gameList" class="game-list"></div>
+    <div id="noGames" class="empty muted">No games yet. Be the first to create one.</div>
+  </section>
+
+  <section class="howto">
+    <h2>How to play</h2>
+    <div class="keys">
+      <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows: move</div>
+      <div><kbd>Space</kbd> or click: kick (aim with the mouse)</div>
+      <div><kbd>Shift</kbd>: dash</div>
+      <div><kbd>Enter</kbd>: chat</div>
+    </div>
+  </section>
+</main>
+
+<!-- ============ CREATE DIALOG ============ -->
+<dialog id="createDialog">
+  <form method="dialog" id="createForm">
+    <h2>Create a game</h2>
+    <label>Game name <input name="name" maxlength="32" placeholder="Friday kickabout" required></label>
+    <label>Password <span class="muted">(optional)</span> <input name="password" maxlength="64" placeholder="Leave blank for a public game"></label>
+    <details>
+      <summary>Rules &amp; boosts</summary>
+      <div id="createRules" class="rules-grid"></div>
+    </details>
+    <div class="row end">
+      <button type="button" class="ghost" id="createCancel">Cancel</button>
+      <button type="submit" class="primary">Create</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="passwordDialog">
+  <form method="dialog" id="passwordForm">
+    <h2>This game is locked</h2>
+    <label>Password <input name="password" autocomplete="off"></label>
+    <div class="row end">
+      <button type="button" class="ghost" id="passwordCancel">Cancel</button>
+      <button type="submit" class="primary">Join</button>
+    </div>
+  </form>
+</dialog>
+
+<!-- ============ PRE-MATCH ============ -->
+<main id="screen-prematch" class="screen">
+  <div class="prematch-head">
+    <div>
+      <h1 id="roomTitle">Game</h1>
+      <div class="muted" id="roomSub"></div>
+    </div>
+    <div class="invite">
+      <span class="muted">Invite friends</span>
+      <code id="inviteCode">------</code>
+      <button id="btnCopyLink" class="ghost small">Copy link</button>
+    </div>
+    <button id="btnLeaveRoom" class="ghost">Leave</button>
+  </div>
+
+  <div class="boards">
+    <div class="team-board red" data-team="red">
+      <h2>Red</h2>
+      <div class="slots" id="slots-red"></div>
+    </div>
+    <div class="vs">VS</div>
+    <div class="team-board blue" data-team="blue">
+      <h2>Blue</h2>
+      <div class="slots" id="slots-blue"></div>
+    </div>
+  </div>
+
+  <div class="prematch-body">
+    <section class="card">
+      <div class="section-head"><h2>Players</h2><span class="muted" id="playerCount"></span></div>
+      <ul id="playerList" class="player-list"></ul>
+      <div class="row">
+        <button id="btnReady">Ready</button>
+        <button id="btnStart" class="primary big">Start match</button>
+      </div>
+      <div class="muted" id="startHint"></div>
+    </section>
+
+    <section class="card">
+      <div class="section-head"><h2>Rules</h2><span class="muted" id="rulesHint">Host can edit</span></div>
+      <div id="roomRules" class="rules-grid"></div>
+      <h3>Boosts in the pool</h3>
+      <div id="roomBoosts" class="boost-grid"></div>
+    </section>
+
+    <section class="card chat">
+      <div class="section-head"><h2>Chat</h2></div>
+      <div id="chatLogPre" class="chat-log"></div>
+      <form id="chatFormPre" class="inline"><input id="chatInputPre" placeholder="Say something" maxlength="200" autocomplete="off"><button type="submit">Send</button></form>
+    </section>
+  </div>
+</main>
+
+<!-- ============ GAME ============ -->
+<main id="screen-game" class="screen">
+  <div id="gameWrap">
+    <canvas id="pitch" width="1320" height="820"></canvas>
+    <div id="hud">
+      <div class="score red"><span id="scoreRed">0</span></div>
+      <div class="clock"><span id="clock">3:00</span><span id="clockTag"></span></div>
+      <div class="score blue"><span id="scoreBlue">0</span></div>
+    </div>
+    <div id="banner" class="banner hidden"></div>
+    <div id="toasts"></div>
+    <div id="spectatorBar" class="hidden">
+      You are spectating. Take over a bot:
+      <span id="spectatorSlots"></span>
+    </div>
+    <div id="chatOverlay">
+      <div id="chatLogGame" class="chat-log"></div>
+      <form id="chatFormGame" class="hidden"><input id="chatInputGame" maxlength="200" autocomplete="off" placeholder="Press Enter to send, Esc to cancel"></form>
+    </div>
+    <div id="mobileControls" class="hidden">
+      <div id="joystick"><div id="stick"></div></div>
+      <div class="mbtns"><button id="mKick">KICK</button><button id="mDash">DASH</button></div>
+    </div>
+    <div id="results" class="hidden">
+      <div class="results-card">
+        <h1 id="resultsTitle">Full time</h1>
+        <div class="results-score"><span class="red" id="resRed">0</span> – <span class="blue" id="resBlue">0</span></div>
+        <table id="statsTable"><thead><tr><th>Player</th><th>G</th><th>A</th><th>Kicks</th><th>Boosts</th></tr></thead><tbody></tbody></table>
+        <div class="row end">
+          <button id="btnResultsLeave" class="ghost">Leave</button>
+          <button id="btnRematch" class="primary">Rematch</button>
+        </div>
+        <div class="muted" id="rematchHint"></div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div id="errorToast" class="hidden"></div>
+
+<script src="/shared/rules.js"></script>
+<script src="/js/net.js"></script>
+<script src="/js/audio.js"></script>
+<script src="/js/render.js"></script>
+<script src="/js/game.js"></script>
+<script src="/js/ui.js"></script>
+<script src="/js/main.js"></script>
+</body>
+</html>
