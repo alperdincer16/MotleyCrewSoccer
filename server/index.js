@@ -56,7 +56,20 @@ class Client {
     this.ws = ws; this.lobby = lobby;
     this.id = null; this.name = null; this.token = null; this.room = null;
     this.alive = true;
-    this.lastInputAt = 0;
+    // Token buckets: inputs stream at up to 30/s legitimately; other
+    // messages are rare. Over-budget messages are dropped silently.
+    this.bucket = { input: 60, other: 20, at: Date.now() };
+  }
+
+  /** Returns true if the message is within the client's rate budget. */
+  allow(kind) {
+    const b = this.bucket, now = Date.now(), dt = (now - b.at) / 1000;
+    b.at = now;
+    b.input = Math.min(60, b.input + dt * 90);
+    b.other = Math.min(20, b.other + dt * 10);
+    if (b[kind] < 1) return false;
+    b[kind] -= 1;
+    return true;
   }
   send(obj) { this.sendRaw(JSON.stringify(obj)); }
   sendRaw(data) { if (this.ws.readyState === 1) this.ws.send(data); }
@@ -66,6 +79,7 @@ class Client {
     if (!msg || typeof msg.type !== 'string') return;
     if (msg.type === C2S.HELLO) return this.hello(msg);
     if (!this.id) return this.error('no_hello', 'Say hello first');
+    if (!this.allow(msg.type === C2S.INPUT || msg.type === C2S.PING ? 'input' : 'other')) return;
     const room = this.room;
     switch (msg.type) {
       case C2S.PING: return this.send({ type: S2C.PONG, t: msg.t });

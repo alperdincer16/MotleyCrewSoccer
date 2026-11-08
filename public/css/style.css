@@ -130,6 +130,9 @@ details .rules-grid { margin-top: 12px; }
 #hud .score { font-size: 30px; font-weight: 900; min-width: 44px; text-align: center; }
 #hud .score.red { color: var(--red); } #hud .score.blue { color: var(--blue); }
 #hud .clock { font-size: 24px; font-weight: 700; display: flex; flex-direction: column; align-items: center; line-height: 1; }
+#hud .clock.urgent { color: var(--red); animation: pulse .5s ease-in-out infinite alternate; }
+@keyframes pulse { from { transform: scale(1); } to { transform: scale(1.12); } }
+#netInfo { position: absolute; left: 12px; top: 12px; font-size: 11px; color: rgba(255,255,255,.45); font-variant-numeric: tabular-nums; pointer-events: none; }
 #hud .clock #clockTag { font-size: 10px; letter-spacing: 2px; color: var(--accent); margin-top: 3px; min-height: 12px; }
 .banner { position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); font-size: 64px; font-weight: 900; text-shadow: 0 4px 30px rgba(0,0,0,.6); pointer-events: none; animation: pop .4s cubic-bezier(.2,1.4,.4,1); text-align: center; white-space: nowrap; }
 .banner small { display: block; font-size: 20px; font-weight: 600; opacity: .85; }
