@@ -24,7 +24,7 @@
   const BALL_RADIUS = 11;
 
   const TEAMS = ['red', 'blue'];
-  const POSITIONS = ['GK', 'DEF', 'FWD'];
+  const POSITIONS = ['GK', 'DEF', 'MID', 'FWD'];   // 4v4 (T-37)
   const TEAM_SIZE = POSITIONS.length;
 
   const TICK_RATE = 60;      // server simulation Hz
@@ -147,7 +147,8 @@
   // x is distance from own goal line as a fraction of pitch length.
   const FORMATION = {
     GK:  { fx: 0.06, fy: 0.50 },
-    DEF: { fx: 0.28, fy: 0.30 },
+    DEF: { fx: 0.22, fy: 0.56 },
+    MID: { fx: 0.32, fy: 0.28 },
     FWD: { fx: 0.42, fy: 0.68 },
   };
 

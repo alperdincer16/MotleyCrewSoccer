@@ -1,12 +1,12 @@
 # ⚽ Motley Crew Soccer
 
-Fast-paced 2D online soccer, **3 vs 3**, in the browser. Three-minute matches,
+Fast-paced 2D online soccer, **4 vs 4**, in the browser. Three-minute matches,
 walls instead of throw-ins, pickups that grant boosts, and bots that fill every
 seat a human doesn't take.
 
 * **Lobby** lists every game (waiting or live). Create your own, lock it with a
   password, and share an invite link that skips the password.
-* **Pre-match** page: pick Red or Blue and GK / DEF / FWD. Unclaimed positions
+* **Pre-match** page: pick Red or Blue and GK / DEF / MID / FWD. Unclaimed positions
   are bots. The host edits the rules and chooses which boosts are in the pool.
 * **National teams**: 16 nations with authentic-looking pixel kits, keeper
   kits and distinct play styles (Brazil dribbles, Spain passes, England goes
@@ -19,6 +19,9 @@ seat a human doesn't take.
   England's thunderbolt, Italy's sliding tackle, Spain's laser pass,
   France's glued-ball sprint, Belgium's shockwave...). Fill the meter by
   playing, then press `E`.
+* **Close control**: passes are cushioned on the first touch, the ball
+  stays at your feet while you dribble and turns with you, and a kick off
+  a controlled ball goes where you aim.
 * **Real shooting**: hold kick to charge, sweep the mouse sideways to bend
   it, `F` or right-click to lob over players. Keepers can claw lobs; a ball
   over the bar hits the frame.
@@ -86,7 +89,7 @@ server/index.js      static files + WebSocket endpoint
 server/lobby.js      room registry: list / create / join / invite
 server/room.js       room state machine, 60 Hz loop, 30 Hz snapshots
 server/game/match.js authoritative physics, rules engine, boosts
-server/game/ai.js    bot brains for GK / DEF / FWD
+server/game/ai.js    bot brains for GK / DEF / MID / FWD
 server/tournament.js 8-nation knockout, simulated fixtures, penalties
 server/profiles.js   persistent player cards (data/profiles.json, or MCS_DATA_DIR)
 public/js/*.js       net, audio, pixel-art sprites, renderer, game client, lobby + pre-match UI,

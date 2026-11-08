@@ -215,7 +215,7 @@ test('player collects a pickup by touching it', () => {
 test('snapshot is compact JSON with the expected shape', () => {
   const m = new Match({}, { 'red:GK': { name: 'Zed', isBot: false } });
   const s = m.snapshot();
-  assert.equal(s.players.length, 6);
+  assert.equal(s.players.length, MCS.TEAM_SIZE * 2);
   assert.equal(s.players[0].name, 'Zed');
   assert.equal(s.players[0].bot, 0);
   assert.equal(s.players[1].bot, 1);

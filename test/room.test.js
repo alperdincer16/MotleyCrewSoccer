@@ -2,6 +2,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { Lobby } = require('../server/lobby');
+const MCS = require('../shared/rules');
 
 class FakeClient {
   constructor(id, name) { this.id = id; this.name = name; this.room = null; this.inbox = []; }
@@ -73,7 +74,7 @@ test('start builds the match with humans in their slots and bots elsewhere; leav
   const m = room.match;
   assert.equal(m.player('red:FWD').isBot, false); assert.equal(m.player('red:FWD').name, 'Host');
   assert.equal(m.player('blue:DEF').isBot, false);
-  assert.equal(m.players.filter(p => p.isBot).length, 4);
+  assert.equal(m.players.filter(p => p.isBot).length, MCS.TEAM_SIZE * 2 - 2);
 
   // Mid-match: guest leaves → bot takes over; spectator joins and claims a slot
   room.disconnectPlayer(guest, true);
@@ -105,7 +106,7 @@ test('ticking the room broadcasts snapshots and finishes the match; rematch rese
   room.tickOnce();
   assert.equal(room.status, 'ended');
   const end = host.last('matchEnd');
-  assert.ok(end); assert.equal(end.stats.length, 6);
+  assert.ok(end); assert.equal(end.stats.length, MCS.TEAM_SIZE * 2);
   room.rematch(host);
   assert.equal(room.status, 'prematch'); assert.equal(room.match, null);
   assert.equal(room.slots['red:GK'], host.id, 'slots survive a rematch');
