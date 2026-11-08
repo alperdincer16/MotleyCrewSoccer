@@ -1,0 +1,254 @@
+/**
+ * public/js/render.js — Canvas renderer: pitch, players, ball, pickups, FX.
+ * Owner: Tomasz Nowak (T-15)
+ *
+ * World coordinates are 1200×700 (see shared/rules.js). The canvas is
+ * 1320×820: a 60-unit border all around so the goal pockets (depth 50)
+ * and a little wall thickness fit on screen.
+ */
+(function () {
+  'use strict';
+  const { FIELD, BOOSTS, PLAYER_RADIUS } = window.MCS;
+  const W = FIELD.width, H = FIELD.height, M = FIELD.margin;
+
+  const COLORS = {
+    red: '#ff4d5e', redDark: '#a8222f', blue: '#3aa0ff', blueDark: '#1b5fa8',
+    grass1: '#2f8f46', grass2: '#2a8340', line: 'rgba(255,255,255,.85)',
+    wall: '#1c2229', wallEdge: '#3a4654', net: 'rgba(255,255,255,.35)',
+  };
+  const FX = { speed: 1, rocket: 2, frozen: 4, shrink: 8, magnet: 16, shield: 32 };
+
+  class Renderer {
+    constructor(canvas) {
+      this.canvas = canvas;
+      this.ctx = canvas.getContext('2d');
+      this.particles = [];
+      this.shake = 0;
+      this.ballSpin = 0;
+      this.time = 0;
+      this.pitchCache = null;
+      this.goalWidth = 180;
+    }
+
+    setGoalWidth(gw) { if (gw !== this.goalWidth) { this.goalWidth = gw; this.pitchCache = null; } }
+
+    // ---- Particles ---------------------------------------------------------
+    burst(x, y, { n = 10, color = '#fff', speed = 180, life = 0.5, size = 3, gravity = 0 } = {}) {
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * Math.PI * 2, s = speed * (0.4 + Math.random() * 0.8);
+        this.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life, maxLife: life, color, size: size * (0.6 + Math.random() * 0.8), gravity });
+      }
+    }
+    confetti(x, y, color) {
+      for (let i = 0; i < 90; i++) {
+        const a = -Math.PI / 2 + (Math.random() - 0.5) * 2.2, s = 300 + Math.random() * 500;
+        this.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 1.6, maxLife: 1.6, color: Math.random() < 0.5 ? color : ['#ffd166', '#fff', '#06d6a0'][i % 3], size: 3 + Math.random() * 4, gravity: 900, rect: true });
+      }
+    }
+    kickShake(amount) { this.shake = Math.max(this.shake, amount); }
+
+    updateParticles(dt) {
+      this.time += dt;
+      this.shake *= Math.pow(0.02, dt);
+      for (let i = this.particles.length - 1; i >= 0; i--) {
+        const p = this.particles[i];
+        p.life -= dt;
+        if (p.life <= 0) { this.particles.splice(i, 1); continue; }
+        p.vy += (p.gravity || 0) * dt;
+        p.x += p.vx * dt; p.y += p.vy * dt;
+        p.vx *= Math.pow(0.3, dt); if (!p.gravity) p.vy *= Math.pow(0.3, dt);
+      }
+    }
+
+    // ---- Static pitch (cached) ----------------------------------------------
+    drawPitchToCache() {
+      const c = document.createElement('canvas');
+      c.width = this.canvas.width; c.height = this.canvas.height;
+      const ctx = c.getContext('2d');
+      const gh = this.goalWidth / 2, cr = FIELD.cornerRadius, gd = FIELD.goalDepth;
+
+      // Floor around the arena
+      ctx.fillStyle = '#0b0e12'; ctx.fillRect(0, 0, c.width, c.height);
+
+      ctx.save(); ctx.translate(M, M);
+      // Arena walls (rounded rect) with goal pockets cut out
+      const arena = new Path2D();
+      arena.roundRect(-8, -8, W + 16, H + 16, cr + 8);
+      ctx.fillStyle = COLORS.wallEdge; ctx.fill(arena);
+      const inner = new Path2D(); inner.roundRect(0, 0, W, H, cr);
+      // Grass
+      ctx.save(); ctx.clip(inner);
+      ctx.fillStyle = COLORS.grass1; ctx.fillRect(0, 0, W, H);
+      ctx.fillStyle = COLORS.grass2;
+      const stripes = 12; for (let i = 0; i < stripes; i += 2) ctx.fillRect(i * W / stripes, 0, W / stripes, H);
+      // subtle vignette
+      const vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, W * 0.75);
+      vg.addColorStop(0, 'rgba(0,0,0,0)'); vg.addColorStop(1, 'rgba(0,0,0,.25)');
+      ctx.fillStyle = vg; ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+
+      // Lines
+      ctx.strokeStyle = COLORS.line; ctx.lineWidth = 3; ctx.lineJoin = 'round';
+      ctx.beginPath(); ctx.moveTo(W / 2, 0); ctx.lineTo(W / 2, H); ctx.stroke();
+      ctx.beginPath(); ctx.arc(W / 2, H / 2, 100, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(W / 2, H / 2, 5, 0, Math.PI * 2); ctx.fillStyle = COLORS.line; ctx.fill();
+      // Boxes
+      const boxW = 170, boxH = gh * 2 + 160;
+      ctx.strokeRect(0, H / 2 - boxH / 2, boxW, boxH); ctx.strokeRect(W - boxW, H / 2 - boxH / 2, boxW, boxH);
+      ctx.beginPath(); ctx.arc(boxW, H / 2, 70, -Math.PI / 2, Math.PI / 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(W - boxW, H / 2, 70, Math.PI / 2, Math.PI * 1.5); ctx.stroke();
+      // Goal lines (the wall is open here)
+      ctx.lineWidth = 3;
+
+      // Goal pockets: cut the wall away and draw a net
+      for (const side of [-1, 1]) {
+        const x0 = side < 0 ? -gd : W, x1 = side < 0 ? 0 : W + gd;
+        ctx.fillStyle = '#10151b'; ctx.fillRect(Math.min(x0, x1) - 8 * (side < 0 ? 1 : -1) * 0, H / 2 - gh, gd, gh * 2);
+        ctx.fillStyle = '#0d1116';
+        ctx.fillRect(side < 0 ? -gd - 8 : W, H / 2 - gh - 8, gd + 8, gh * 2 + 16);
+        ctx.fillStyle = '#141a21'; ctx.fillRect(side < 0 ? -gd : W, H / 2 - gh, gd, gh * 2);
+        // net mesh
+        ctx.strokeStyle = COLORS.net; ctx.lineWidth = 1;
+        for (let x = 0; x <= gd; x += 10) { ctx.beginPath(); ctx.moveTo((side < 0 ? -x : W + x), H / 2 - gh); ctx.lineTo((side < 0 ? -x : W + x), H / 2 + gh); ctx.stroke(); }
+        for (let y = -gh; y <= gh; y += 10) { ctx.beginPath(); ctx.moveTo(side < 0 ? -gd : W, H / 2 + y); ctx.lineTo(side < 0 ? 0 : W + gd, H / 2 + y); ctx.stroke(); }
+        // team colour strip on the back of the net
+        ctx.fillStyle = side < 0 ? COLORS.red : COLORS.blue;
+        ctx.fillRect(side < 0 ? -gd - 6 : W + gd, H / 2 - gh, 6, gh * 2);
+        // posts
+        for (const py of [H / 2 - gh, H / 2 + gh]) {
+          ctx.beginPath(); ctx.arc(side < 0 ? 0 : W, py, 9, 0, Math.PI * 2);
+          ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#999'; ctx.lineWidth = 2; ctx.stroke();
+        }
+      }
+      ctx.restore();
+      this.pitchCache = c;
+    }
+
+    // ---- Frame -------------------------------------------------------------
+    /**
+     * @param view  interpolated match view { players, ball, pickups, state, ... }
+     * @param opts  { mySlot, dt }
+     */
+    draw(view, opts) {
+      const ctx = this.ctx, dt = opts.dt || 0.016;
+      this.updateParticles(dt);
+      if (!this.pitchCache) this.drawPitchToCache();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+      const sx = (Math.random() - 0.5) * this.shake, sy = (Math.random() - 0.5) * this.shake;
+      ctx.drawImage(this.pitchCache, sx, sy);
+      ctx.translate(M + sx, M + sy);
+      if (!view) return;
+
+      // Kickoff: dim the half the non-kicking team may not enter.
+      if (view.state === 'kickoff' && view.ko) {
+        ctx.fillStyle = 'rgba(255,255,255,.06)';
+        ctx.fillRect(view.ko === 'red' ? 0 : W / 2, 0, W / 2, H);
+      }
+
+      for (const pk of view.pickups) this.drawPickup(pk);
+      // Shadows
+      ctx.fillStyle = 'rgba(0,0,0,.25)';
+      for (const p of view.players) { ctx.beginPath(); ctx.ellipse(p.x + 3, p.y + 5, p.r, p.r * 0.8, 0, 0, Math.PI * 2); ctx.fill(); }
+      ctx.beginPath(); ctx.ellipse(view.ball.x + 3, view.ball.y + 5, view.ball.r, view.ball.r * 0.8, 0, 0, Math.PI * 2); ctx.fill();
+
+      for (const p of view.players) this.drawPlayer(p, p.id === opts.mySlot);
+      this.drawBall(view.ball, dt);
+      this.drawParticles();
+    }
+
+    drawPickup(pk) {
+      const ctx = this.ctx, b = BOOSTS[pk.type]; if (!b) return;
+      const pulse = 1 + Math.sin(this.time * 5 + pk.id) * 0.08;
+      const r = 17 * pulse;
+      const fade = pk.ttl < 4 ? (Math.sin(this.time * 12) > 0 ? 0.5 : 1) : 1;
+      ctx.save(); ctx.globalAlpha = fade;
+      const g = ctx.createRadialGradient(pk.x, pk.y, 2, pk.x, pk.y, r * 2.2);
+      g.addColorStop(0, b.color + 'aa'); g.addColorStop(1, b.color + '00');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(pk.x, pk.y, r * 2.2, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#10151b'; ctx.beginPath(); ctx.arc(pk.x, pk.y, r, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = b.color; ctx.lineWidth = 3; ctx.stroke();
+      ctx.font = `${Math.round(r * 1.1)}px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.fillStyle = '#fff';
+      ctx.fillText(b.icon, pk.x, pk.y + 1);
+      ctx.restore();
+    }
+
+    drawPlayer(p, isMe) {
+      const ctx = this.ctx, team = p.id.split(':')[0], pos = p.id.split(':')[1];
+      const fill = team === 'red' ? COLORS.red : COLORS.blue, dark = team === 'red' ? COLORS.redDark : COLORS.blueDark;
+      const fx = p.fx || 0;
+
+      // Effect auras under the body
+      if (fx & FX.shield) { ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 7, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(72,202,228,.9)'; ctx.lineWidth = 3; ctx.setLineDash([6, 4]); ctx.lineDashOffset = -this.time * 40; ctx.stroke(); ctx.setLineDash([]); }
+      if (fx & FX.magnet) { ctx.beginPath(); ctx.arc(p.x, p.y, 170, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(255,159,28,.25)'; ctx.lineWidth = 2; ctx.setLineDash([10, 10]); ctx.lineDashOffset = this.time * 60; ctx.stroke(); ctx.setLineDash([]); }
+      if (fx & FX.speed) { for (let i = 1; i <= 3; i++) { ctx.beginPath(); ctx.arc(p.x - p.vx * 0.012 * i, p.y - p.vy * 0.012 * i, p.r * (1 - i * 0.15), 0, Math.PI * 2); ctx.fillStyle = `rgba(255,209,102,${0.35 - i * 0.1})`; ctx.fill(); } }
+      if (fx & FX.rocket) { const g = ctx.createRadialGradient(p.x, p.y, p.r, p.x, p.y, p.r * 2); g.addColorStop(0, 'rgba(239,71,111,.6)'); g.addColorStop(1, 'rgba(239,71,111,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 2, 0, Math.PI * 2); ctx.fill(); }
+
+      // Body
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = (fx & FX.frozen) ? '#b8e3f5' : fill; ctx.fill();
+      ctx.lineWidth = 3; ctx.strokeStyle = (fx & FX.frozen) ? '#5aa9d6' : dark; ctx.stroke();
+      // Kick flash ring
+      if (p.kf) { ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 4, 0, Math.PI * 2); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); }
+      // Position letter
+      ctx.fillStyle = (fx & FX.frozen) ? '#1b4a63' : '#fff';
+      ctx.font = `bold ${Math.round(p.r * 0.85)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(pos === 'GK' ? 'G' : pos === 'DEF' ? 'D' : 'F', p.x, p.y + 1);
+
+      // Name tag
+      ctx.font = `${isMe ? 'bold ' : ''}12px system-ui, sans-serif`; ctx.textBaseline = 'alphabetic';
+      ctx.fillStyle = 'rgba(0,0,0,.55)';
+      const label = p.bot ? '🤖 ' + p.name : p.name;
+      const tw = ctx.measureText(label).width + 10;
+      ctx.beginPath(); ctx.roundRect(p.x - tw / 2, p.y - p.r - 22, tw, 16, 6); ctx.fill();
+      ctx.fillStyle = isMe ? '#ffd166' : '#fff'; ctx.fillText(label, p.x, p.y - p.r - 10);
+
+      // Local-player marker + dash cooldown arc
+      if (isMe) {
+        ctx.beginPath(); ctx.moveTo(p.x, p.y - p.r - 30); ctx.lineTo(p.x - 6, p.y - p.r - 38); ctx.lineTo(p.x + 6, p.y - p.r - 38); ctx.closePath();
+        ctx.fillStyle = '#ffd166'; ctx.fill();
+        if (p.dash > 0) {
+          ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - p.dash));
+          ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 2; ctx.stroke();
+        }
+      }
+    }
+
+    drawBall(b, dt) {
+      const ctx = this.ctx;
+      const speed = Math.hypot(b.vx, b.vy);
+      this.ballSpin += speed * dt / Math.max(6, b.r);
+      // motion blur streak
+      if (speed > 350) {
+        ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = b.r * 1.2; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - b.vx * 0.03, b.y - b.vy * 0.03); ctx.stroke();
+      }
+      ctx.save(); ctx.translate(b.x, b.y);
+      ctx.beginPath(); ctx.arc(0, 0, b.r, 0, Math.PI * 2); ctx.fillStyle = b.giant ? '#aef7df' : '#fff'; ctx.fill();
+      ctx.lineWidth = 2; ctx.strokeStyle = '#333'; ctx.stroke();
+      // pentagon patches
+      ctx.rotate(this.ballSpin * Math.sign(b.vx || 1));
+      ctx.fillStyle = '#222';
+      for (let i = 0; i < 3; i++) {
+        const a = i * Math.PI * 2 / 3;
+        ctx.beginPath(); ctx.arc(Math.cos(a) * b.r * 0.5, Math.sin(a) * b.r * 0.5, b.r * 0.28, 0, Math.PI * 2); ctx.fill();
+      }
+      ctx.restore();
+    }
+
+    drawParticles() {
+      const ctx = this.ctx;
+      for (const p of this.particles) {
+        ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+        ctx.fillStyle = p.color;
+        if (p.rect) { ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(p.life * 6); ctx.fillRect(-p.size / 2, -p.size / 4, p.size, p.size / 2); ctx.restore(); }
+        else { ctx.beginPath(); ctx.arc(p.x, p.y, p.size * (p.life / p.maxLife), 0, Math.PI * 2); ctx.fill(); }
+      }
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  Renderer.COLORS = COLORS;
+  window.Renderer = Renderer;
+})();
