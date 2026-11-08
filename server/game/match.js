@@ -1,50 +1,29 @@
 /**
  * server/game/match.js — authoritative match simulation.
- * Owner: Diego Ferreira (T-07 physics, T-08 rules engine, T-09 boosts)
+ * Owner: Diego Ferreira (T-07 physics, T-08 rules engine, T-09 boosts, T-20 shared physics)
  *
  * A Match owns six players (humans or bots), the ball, pickups, the clock,
  * and the score. It is pure game logic: no sockets, no timers. The Room
  * calls setInput() for humans, asks the AI for bot inputs, then step(dt).
+ * Player movement and arena collision live in shared/physics.js so the
+ * client can predict its own player with identical code.
  */
 'use strict';
 
 const MCS = require('../../shared/rules');
+const Physics = require('../../shared/physics');
 const { FIELD, PLAYER_RADIUS, BALL_RADIUS, TEAMS, POSITIONS, BOOSTS, FORMATION } = MCS;
+const { FEEL } = Physics;
 
 const W = FIELD.width;
 const H = FIELD.height;
-
-// Tunables that are not player-facing rules (feel constants).
-const FEEL = {
-  playerAccel: 2600,       // units/s^2
-  playerMaxSpeed: 270,     // units/s at playerSpeed 1.0
-  playerDamping: 0.88,     // per 1/60 s when no input
-  playerMoveDamping: 0.96, // per 1/60 s while pushing a direction
-  kickSpeed: 640,          // ball speed from a kick at kickPower 1.0
-  kickRange: 8,            // extra reach beyond touching
-  kickCooldown: 0.28,
-  dashImpulse: 560,
-  dashCooldown: 2.2,
-  dashDuration: 0.16,
-  ballMaxSpeed: 1050,
-  ballPlayerBounce: 0.55,
-  playerPlayerBounce: 0.35,
-  wallPlayerBounce: 0.25,
-  postRadius: 9,
-  pickupRadius: 17,
-  centerCircle: 100,
-  countdownSeconds: 3,
-  magnetRange: 170,
-  magnetForce: 900,
-  kickoffTimeout: 6,       // seconds before a stalled kickoff opens play to all
-  suddenDeathCap: 90,      // seconds of sudden death before the match is a draw
-};
 
 const EFFECT_FLAGS = { speed: 1, rocket: 2, frozen: 4, shrink: 8, magnet: 16, shield: 32 };
 
 function len(x, y) { return Math.hypot(x, y); }
 function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 function rnd(a, b) { return a + Math.random() * (b - a); }
+function blankInput() { return { up: false, down: false, left: false, right: false, kick: false, dash: false, aimX: null, aimY: null }; }
 
 class Match {
   /**
@@ -82,8 +61,10 @@ class Match {
           name: info.name || `${team.toUpperCase()} ${pos} bot`,
           isBot: info.isBot !== false,
           x: 0, y: 0, vx: 0, vy: 0, r: PLAYER_RADIUS,
-          input: { up: false, down: false, left: false, right: false, kick: false, dash: false, aimX: null, aimY: null },
+          input: blankInput(),
           kickCooldown: 0, dashCooldown: 0, dashTime: 0, kickFlash: 0,
+          kickBuffer: 0,      // seconds left in which a recent kick press still counts
+          kickHeld: false,
           effects: {},
           stats: { goals: 0, ownGoals: 0, assists: 0, kicks: 0, touches: 0, pickups: 0, saves: 0 },
         });
@@ -97,16 +78,20 @@ class Match {
   setHuman(slotId, name) { const p = this.player(slotId); if (p) { p.isBot = false; p.name = name; } }
   setBot(slotId) {
     const p = this.player(slotId);
-    if (p) { p.isBot = true; p.name = `${p.team.toUpperCase()} ${p.pos} bot`; p.input = { up: false, down: false, left: false, right: false, kick: false, dash: false, aimX: null, aimY: null }; }
+    if (p) { p.isBot = true; p.name = `${p.team.toUpperCase()} ${p.pos} bot`; p.input = blankInput(); }
   }
   setInput(slotId, input) {
     const p = this.player(slotId);
     if (!p || !input) return;
     p.input.up = !!input.up; p.input.down = !!input.down;
     p.input.left = !!input.left; p.input.right = !!input.right;
-    p.input.kick = !!input.kick; p.input.dash = !!input.dash;
-    p.input.aimX = Number.isFinite(input.aimX) ? input.aimX : null;
-    p.input.aimY = Number.isFinite(input.aimY) ? input.aimY : null;
+    p.input.dash = !!input.dash;
+    const kick = !!input.kick;
+    if (kick && !p.kickHeld && !p.isBot) p.kickBuffer = FEEL.kickBuffer;   // humans: a press just before contact still counts
+    p.kickHeld = kick;
+    p.input.kick = kick;
+    p.input.aimX = Number.isFinite(input.aimX) ? clamp(input.aimX, -FIELD.goalDepth, W + FIELD.goalDepth) : null;
+    p.input.aimY = Number.isFinite(input.aimY) ? clamp(input.aimY, 0, H) : null;
   }
 
   // ---- Geometry helpers ----------------------------------------------------
@@ -127,12 +112,13 @@ class Match {
 
   emit(ev) { this.events.push(ev); }
 
+  effectState(p) { return { speed: !!p.effects.speed, shrink: !!p.effects.shrink, frozen: !!p.effects.frozen }; }
+
   // ---- Main step -------------------------------------------------------------
   step(dt) {
     if (this.state === 'ended') return;
     this.tick++;
 
-    // State machine ----------------------------------------------------------
     if (this.state === 'countdown') {
       this.stateTimer -= dt;
       if (this.stateTimer <= 0) { this.state = 'kickoff'; this.kickoffTimer = 0; this.emit({ type: 'whistle' }); }
@@ -141,7 +127,7 @@ class Match {
     }
     if (this.state === 'goal') {
       this.stateTimer -= dt;
-      this.integrateBall(dt); // let the ball roll into the net for show
+      this.moveBall(dt); // let the ball roll into the net for show
       if (this.stateTimer <= 0) {
         this.resetPositions();
         this.ball.effects = {};
@@ -170,8 +156,6 @@ class Match {
       if (this.time >= FEEL.suddenDeathCap) { this.endMatch(); return; }
     }
 
-    // Kickoff: once the taker has had a fair chance, open play to everyone so
-    // an idle human can never freeze the match.
     if (this.state === 'kickoff') {
       this.kickoffTimer += dt;
       if (this.kickoffTimer >= FEEL.kickoffTimeout) { this.state = 'play'; this.emit({ type: 'kickoffOpen' }); }
@@ -180,77 +164,34 @@ class Match {
     // Players ----------------------------------------------------------------
     for (const p of this.players) this.integratePlayer(p, dt);
     this.collidePlayers();
-    for (const p of this.players) this.confinePlayer(p);
+    for (const p of this.players) Physics.confinePlayer(p, p.team, this.state, this.kickoffTeam, this.goalHalfWidth());
 
-    // Ball -----------------------------------------------------------------
+    // Ball: sub-stepped so a fast shot can't pass through a post or a player.
     this.applyMagnets(dt);
-    this.integrateBall(dt);
-    for (const p of this.players) this.collideBallPlayer(p);
-    for (const p of this.players) this.tryKick(p);
+    const speed = len(this.ball.vx, this.ball.vy);
+    const steps = Math.max(1, Math.min(6, Math.ceil(speed * dt / (this.ball.r * 0.75))));
+    for (let i = 0; i < steps; i++) {
+      this.moveBall(dt / steps);
+      for (const p of this.players) this.collideBallPlayer(p);
+    }
+    for (const p of this.players) this.tryKick(p, dt);
 
     if (this.state === 'kickoff' && len(this.ball.vx, this.ball.vy) > 1) this.state = 'play';
 
-    // Pickups ----------------------------------------------------------------
     this.updatePickups(dt);
     this.decayEffects(dt);
-
-    // Goal detection ---------------------------------------------------------
     this.checkGoal();
   }
 
   // ---- Players -------------------------------------------------------------
-  speedMul(p) {
-    let m = this.rules.playerSpeed;
-    if (p.effects.speed) m *= 1.6;
-    if (p.effects.shrink) m *= 0.7;
-    return m;
-  }
-  radiusOf(p) { return p.effects.shrink ? PLAYER_RADIUS * 0.6 : PLAYER_RADIUS; }
+  speedMul(p) { return Physics.speedMul(this.rules, this.effectState(p)); }
 
   integratePlayer(p, dt) {
-    p.r = this.radiusOf(p);
     p.kickCooldown = Math.max(0, p.kickCooldown - dt);
-    p.dashCooldown = Math.max(0, p.dashCooldown - dt);
-    p.dashTime = Math.max(0, p.dashTime - dt);
     p.kickFlash = Math.max(0, p.kickFlash - dt);
-
-    const frozen = !!p.effects.frozen;
-    let dx = 0, dy = 0;
-    if (!frozen) {
-      if (p.input.left) dx -= 1;
-      if (p.input.right) dx += 1;
-      if (p.input.up) dy -= 1;
-      if (p.input.down) dy += 1;
-    }
-    const moving = dx !== 0 || dy !== 0;
-    if (moving) {
-      const l = len(dx, dy); dx /= l; dy /= l;
-      const mul = this.speedMul(p);
-      p.vx += dx * FEEL.playerAccel * mul * dt;
-      p.vy += dy * FEEL.playerAccel * mul * dt;
-    }
-
-    // Dash: a burst of speed in the movement direction (or facing the ball).
-    if (!frozen && this.rules.dashEnabled && p.input.dash && p.dashCooldown === 0) {
-      let ddx = dx, ddy = dy;
-      if (!moving) { ddx = this.ball.x - p.x; ddy = this.ball.y - p.y; const l = len(ddx, ddy) || 1; ddx /= l; ddy /= l; }
-      p.vx += ddx * FEEL.dashImpulse;
-      p.vy += ddy * FEEL.dashImpulse;
-      p.dashCooldown = FEEL.dashCooldown;
-      p.dashTime = FEEL.dashDuration;
-      this.emit({ type: 'dash', slot: p.id, x: p.x, y: p.y });
-    }
-
-    // Damping and speed cap
-    const damp = Math.pow(moving ? FEEL.playerMoveDamping : FEEL.playerDamping, dt * 60);
-    p.vx *= damp; p.vy *= damp;
-    if (frozen) { p.vx *= 0.8; p.vy *= 0.8; }
-    const max = FEEL.playerMaxSpeed * this.speedMul(p) * (p.dashTime > 0 ? 3 : 1);
-    const sp = len(p.vx, p.vy);
-    if (sp > max) { p.vx = p.vx / sp * max; p.vy = p.vy / sp * max; }
-
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
+    p.kickBuffer = Math.max(0, p.kickBuffer - dt);
+    const dashed = Physics.integratePlayer(p, p.input, this.rules, dt, this.effectState(p), this.ball);
+    if (dashed) this.emit({ type: 'dash', slot: p.id, x: p.x, y: p.y });
   }
 
   collidePlayers() {
@@ -270,7 +211,6 @@ class Match {
         let wa = 0.5, wb = 0.5;
         if (aFixed && !bFixed) { wa = 0; wb = 1; }
         else if (bFixed && !aFixed) { wa = 1; wb = 0; }
-        else if (aFixed && bFixed) { wa = 0.5; wb = 0.5; }
         a.x -= nx * overlap * wa; a.y -= ny * overlap * wa;
         b.x += nx * overlap * wb; b.y += ny * overlap * wb;
         const rvx = b.vx - a.vx, rvy = b.vy - a.vy;
@@ -284,93 +224,11 @@ class Match {
     }
   }
 
-  confinePlayer(p) {
-    const r = p.r;
-    // Rounded-corner arena, players never enter the goal pockets.
-    this.confineCircleToArena(p, r, FEEL.wallPlayerBounce, false);
-
-    // Kickoff discipline: stay in own half; non-kicking team outside the circle.
-    if (this.state === 'kickoff') {
-      const dir = this.attackDir(p.team);
-      if (dir > 0 && p.x > W / 2 - r) { p.x = W / 2 - r; if (p.vx > 0) p.vx = 0; }
-      if (dir < 0 && p.x < W / 2 + r) { p.x = W / 2 + r; if (p.vx < 0) p.vx = 0; }
-      if (p.team !== this.kickoffTeam) {
-        const dx = p.x - W / 2, dy = p.y - H / 2, d = len(dx, dy);
-        const minD = FEEL.centerCircle + r;
-        if (d < minD) {
-          const nx = d ? dx / d : -dir, ny = d ? dy / d : 0;
-          p.x = W / 2 + nx * minD; p.y = H / 2 + ny * minD;
-          const vn = p.vx * nx + p.vy * ny;
-          if (vn < 0) { p.vx -= nx * vn; p.vy -= ny * vn; }
-        }
-      }
-    }
-    // Goalposts
-    this.collidePosts(p, 0.3);
-  }
-
-  /** Confine a circle body to the arena. allowPockets lets it enter the goals. */
-  confineCircleToArena(b, r, bounce, allowPockets) {
-    const gh = this.goalHalfWidth();
-    const inMouth = Math.abs(b.y - H / 2) < gh - r * 0.2;
-    let hit = false;
-
-    if (allowPockets && inMouth) {
-      // Inside the goal pocket region: bounce off the back net and pocket sides.
-      const back = FIELD.goalDepth;
-      if (b.x < -back + r) { b.x = -back + r; if (b.vx < 0) { b.vx = -b.vx * bounce; hit = true; } }
-      if (b.x > W + back - r) { b.x = W + back - r; if (b.vx > 0) { b.vx = -b.vx * bounce; hit = true; } }
-      if (b.x < r || b.x > W - r) {
-        if (b.y < H / 2 - gh + r) { b.y = H / 2 - gh + r; if (b.vy < 0) { b.vy = -b.vy * bounce; hit = true; } }
-        if (b.y > H / 2 + gh - r) { b.y = H / 2 + gh - r; if (b.vy > 0) { b.vy = -b.vy * bounce; hit = true; } }
-        return hit;
-      }
-    } else {
-      if (b.x < r) { b.x = r; if (b.vx < 0) { b.vx = -b.vx * bounce; hit = true; } }
-      if (b.x > W - r) { b.x = W - r; if (b.vx > 0) { b.vx = -b.vx * bounce; hit = true; } }
-    }
-    if (b.y < r) { b.y = r; if (b.vy < 0) { b.vy = -b.vy * bounce; hit = true; } }
-    if (b.y > H - r) { b.y = H - r; if (b.vy > 0) { b.vy = -b.vy * bounce; hit = true; } }
-
-    // Rounded corners
-    const cr = FIELD.cornerRadius;
-    const corners = [[cr, cr], [W - cr, cr], [cr, H - cr], [W - cr, H - cr]];
-    for (const [cx, cy] of corners) {
-      const inCornerBox = (cx < W / 2 ? b.x < cx : b.x > cx) && (cy < H / 2 ? b.y < cy : b.y > cy);
-      if (!inCornerBox) continue;
-      const dx = b.x - cx, dy = b.y - cy, d = len(dx, dy);
-      const maxD = cr - r;
-      if (d > maxD && d > 0) {
-        const nx = dx / d, ny = dy / d;
-        b.x = cx + nx * maxD; b.y = cy + ny * maxD;
-        const vn = b.vx * nx + b.vy * ny;
-        if (vn > 0) { b.vx -= (1 + bounce) * vn * nx; b.vy -= (1 + bounce) * vn * ny; hit = true; }
-      }
-    }
-    return hit;
-  }
-
-  collidePosts(b, bounce) {
-    const gh = this.goalHalfWidth();
-    const posts = [[0, H / 2 - gh], [0, H / 2 + gh], [W, H / 2 - gh], [W, H / 2 + gh]];
-    let hit = false;
-    for (const [px, py] of posts) {
-      const dx = b.x - px, dy = b.y - py, d = len(dx, dy);
-      const minD = b.r + FEEL.postRadius;
-      if (d < minD && d > 0) {
-        const nx = dx / d, ny = dy / d;
-        b.x = px + nx * minD; b.y = py + ny * minD;
-        const vn = b.vx * nx + b.vy * ny;
-        if (vn < 0) { b.vx -= (1 + bounce) * vn * nx; b.vy -= (1 + bounce) * vn * ny; hit = true; }
-      }
-    }
-    return hit;
-  }
-
   // ---- Ball ------------------------------------------------------------------
   ballRadius() { return this.ball.effects.giant ? BALL_RADIUS * 2.2 : BALL_RADIUS; }
 
-  integrateBall(dt) {
+  /** Integrate the ball by dt and resolve wall/post contact. */
+  moveBall(dt) {
     const b = this.ball;
     b.r = this.ballRadius();
     const drag = Math.pow(b.effects.giant ? Math.min(0.999, this.rules.ballDrag + 0.004) : this.rules.ballDrag, dt * 60);
@@ -381,8 +239,8 @@ class Match {
     b.x += b.vx * dt;
     b.y += b.vy * dt;
     const bounce = b.effects.giant ? Math.max(this.rules.ballBounce, 0.95) : this.rules.ballBounce;
-    const hitWall = this.confineCircleToArena(b, b.r, bounce, true);
-    const hitPost = this.collidePosts(b, bounce);
+    const hitWall = Physics.confineToArena(b, b.r, bounce, true, this.goalHalfWidth());
+    const hitPost = Physics.collidePosts(b, bounce, this.goalHalfWidth());
     if ((hitWall || hitPost) && sp > 120) this.emit({ type: 'bounce', x: b.x, y: b.y, speed: sp, post: hitPost });
   }
 
@@ -393,7 +251,6 @@ class Match {
     const minD = b.r + p.r;
     if (d >= minD || d === 0) return;
     const nx = dx / d, ny = dy / d;
-    // Move the ball out (the player is far heavier); a giant ball nudges the player a bit.
     const overlap = minD - d;
     const ballShare = b.effects.giant ? 0.7 : 1;
     b.x += nx * overlap * ballShare; b.y += ny * overlap * ballShare;
@@ -408,18 +265,23 @@ class Match {
     const pushN = p.vx * nx + p.vy * ny;
     const bn = b.vx * nx + b.vy * ny;
     if (bn < pushN + 40) { b.vx += nx * (pushN + 40 - bn); b.vy += ny * (pushN + 40 - bn); }
+    // A dashing player that runs into the ball gives it a real whack.
+    if (p.dashTime > 0 && !p.effects.frozen) {
+      const extra = 180;
+      b.vx += nx * extra; b.vy += ny * extra;
+    }
     this.registerTouch(p, false);
   }
 
-  tryKick(p) {
-    if (!p.input.kick || p.kickCooldown > 0 || p.effects.frozen) return;
+  tryKick(p, dt) {
+    const wants = p.input.kick || p.kickBuffer > 0;
+    if (!wants || p.kickCooldown > 0 || p.effects.frozen) return;
     const b = this.ball;
     const dx = b.x - p.x, dy = b.y - p.y;
     const d = len(dx, dy);
     if (d > b.r + p.r + FEEL.kickRange) return;
     let nx = dx / (d || 1), ny = dy / (d || 1);
-    // Optional aim: humans can point with the mouse; the kick direction is
-    // blended toward the aim point for a little extra control.
+    // Optional aim: the kick direction is blended toward the aim point.
     if (p.input.aimX !== null && p.input.aimY !== null) {
       let ax = p.input.aimX - b.x, ay = p.input.aimY - b.y;
       const al = len(ax, ay);
@@ -436,6 +298,7 @@ class Match {
     b.vx = nx * power + p.vx * 0.3;
     b.vy = ny * power + p.vy * 0.3;
     p.kickCooldown = FEEL.kickCooldown;
+    p.kickBuffer = 0;
     p.kickFlash = 0.15;
     p.stats.kicks++;
     this.registerTouch(p, true);
@@ -447,7 +310,7 @@ class Match {
     if (!this.lastTouch || this.lastTouch.slot !== p.id) {
       p.stats.touches++;
       this.prevTouch = this.lastTouch;
-      this.lastTouch = { slot: p.id, team: p.team, tick: now };
+      this.lastTouch = { slot: p.id, team: p.team, tick: now, since: now };
     } else {
       this.lastTouch.tick = now;
     }
@@ -465,7 +328,6 @@ class Match {
       if (d > FEEL.magnetRange || d < p.r + b.r + 2) continue;
       const f = FEEL.magnetForce * (1 - d / FEEL.magnetRange) + 200;
       b.vx += dx / d * f * dt; b.vy += dy / d * f * dt;
-      // bleed off sideways velocity so the ball actually arrives
       b.vx *= 0.97; b.vy *= 0.97;
     }
   }
@@ -478,7 +340,14 @@ class Match {
     if (this.pickupTimer <= 0 && this.pickups.length < r.maxPickups && this.state === 'play') {
       this.pickupTimer = r.pickupInterval;
       const type = r.enabledBoosts[Math.floor(Math.random() * r.enabledBoosts.length)];
-      const pk = { id: this.nextPickupId++, type, x: rnd(W * 0.15, W * 0.85), y: rnd(H * 0.15, H * 0.85), ttl: 20 };
+      // Spawn away from the ball and from every player so nobody gets a freebie.
+      let pk = null;
+      for (let attempt = 0; attempt < 12; attempt++) {
+        const cand = { x: rnd(W * 0.15, W * 0.85), y: rnd(H * 0.15, H * 0.85) };
+        const tooClose = len(cand.x - this.ball.x, cand.y - this.ball.y) < 120 || this.players.some(p => len(p.x - cand.x, p.y - cand.y) < 90);
+        if (!tooClose || attempt === 11) { pk = cand; break; }
+      }
+      pk = { id: this.nextPickupId++, type, x: pk.x, y: pk.y, ttl: 20 };
       this.pickups.push(pk);
       this.emit({ type: 'spawn', boost: type, x: pk.x, y: pk.y });
     }
@@ -541,10 +410,17 @@ class Match {
     const conceded = MCS.otherTeam(scoring);
 
     let scorer = null, assist = null, ownGoal = false;
-    // A defender's deflection within 2 s of an attacker's kick credits the attacker.
-    if (this.lastTouch && this.lastTouch.team === conceded && this.lastKick && this.lastKick.team === scoring
+    // Deflections: a defender who only brushed the ball (contact started < 1 s
+    // ago) right after an attacker touched it does not score an own goal; the
+    // attacker is credited. A deliberate kick by the defender still counts.
+    if (this.lastTouch && this.lastTouch.team === conceded && !this.lastTouch.kick
+        && this.tick - this.lastTouch.since < MCS.TICK_RATE * 1.0
+        && this.prevTouch && this.prevTouch.team === scoring
+        && this.tick - this.prevTouch.tick < MCS.TICK_RATE * 2.5) {
+      this.lastTouch = { slot: this.prevTouch.slot, team: scoring, tick: this.tick, kick: true };
+      this.prevTouch = null;
+    } else if (this.lastTouch && this.lastTouch.team === conceded && this.lastKick && this.lastKick.team === scoring
         && this.tick - this.lastKick.tick < MCS.TICK_RATE * 2) {
-      this.prevTouch = this.lastTouch; // keeps assists sane
       this.lastTouch = { slot: this.lastKick.slot, team: scoring, tick: this.tick, kick: true };
       this.prevTouch = this.lastKick.prev || null;
     }
@@ -557,22 +433,22 @@ class Match {
         }
       } else { scorer = lp; lp.stats.ownGoals++; ownGoal = true; }
     }
+    const shotSpeed = len(b.vx, b.vy);
     this.emit({
       type: 'goal', team: scoring, scorer: scorer ? scorer.id : null, scorerName: scorer ? scorer.name : null,
       assist: assist ? assist.id : null, ownGoal, score: Object.assign({}, this.score), x: b.x, y: b.y,
+      speed: Math.round(shotSpeed), clock: Math.round(this.time), sd: this.suddenDeath,
     });
     this.lastTouch = null; this.prevTouch = null; this.lastKick = null;
     this.kickoffTeam = conceded;
 
     const r = this.rules;
     const diff = Math.abs(this.score.red - this.score.blue);
-    if (this.suddenDeath || (r.goalLimit > 0 && this.score[scoring] >= r.goalLimit) || (r.mercyLead > 0 && diff >= r.mercyLead)) {
-      this.state = 'goal'; this.stateTimer = r.kickoffPause;
-      this.endMatch();
-      return;
-    }
     this.state = 'goal';
     this.stateTimer = r.kickoffPause;
+    if (this.suddenDeath || (r.goalLimit > 0 && this.score[scoring] >= r.goalLimit) || (r.mercyLead > 0 && diff >= r.mercyLead)) {
+      this.endMatch();
+    }
   }
 
   endMatch() {
@@ -600,7 +476,9 @@ class Match {
       players: this.players.map(p => ({
         id: p.id, x: Math.round(p.x * 10) / 10, y: Math.round(p.y * 10) / 10,
         vx: Math.round(p.vx), vy: Math.round(p.vy), r: p.r,
-        fx: this.effectFlags(p), dash: p.dashCooldown > 0 ? Math.round(p.dashCooldown / FEEL.dashCooldown * 100) / 100 : 0,
+        fx: this.effectFlags(p),
+        dash: p.dashCooldown > 0 ? Math.round(p.dashCooldown / FEEL.dashCooldown * 100) / 100 : 0,
+        dc: Math.round(p.dashCooldown * 100) / 100, dtm: Math.round(p.dashTime * 1000) / 1000,
         kf: p.kickFlash > 0 ? 1 : 0, bot: p.isBot ? 1 : 0, name: p.name,
       })),
       ball: { x: Math.round(this.ball.x * 10) / 10, y: Math.round(this.ball.y * 10) / 10, vx: Math.round(this.ball.vx), vy: Math.round(this.ball.vy), r: this.ball.r, giant: this.ball.effects.giant ? 1 : 0 },

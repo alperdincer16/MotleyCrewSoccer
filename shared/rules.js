@@ -47,7 +47,8 @@
     boostsEnabled:   { label: 'Boost pickups',           kind: 'bool',   def: true },
     pickupInterval:  { label: 'Pickup spawn every (s)',  kind: 'number', def: 8,     min: 3,   max: 30,  step: 1 },
     maxPickups:      { label: 'Max pickups on pitch',    kind: 'number', def: 2,     min: 1,   max: 5,   step: 1 },
-    kickoffPause:    { label: 'Pause after goal (s)',    kind: 'number', def: 2.0,   min: 0.5, max: 5,   step: 0.5 },
+    kickoffPause:    { label: 'Pause after goal (s)',    kind: 'number', def: 2.5,   min: 0.5, max: 5,   step: 0.5 },
+    botSkill:        { label: 'Bot skill ×',             kind: 'number', def: 1.0,   min: 0.5, max: 1.5, step: 0.1 },
   };
 
   // ---- Boost catalogue ------------------------------------------------------
