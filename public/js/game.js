@@ -11,7 +11,7 @@
   const Teams = window.Teams;
   const { FIELD } = MCS;
   const INPUT_RATE = 30;
-  const FX = { speed: 1, rocket: 2, frozen: 4, shrink: 8, magnet: 16, shield: 32 };
+  const FX = { speed: 1, rocket: 2, frozen: 4, shrink: 8, magnet: 16, shield: 32, slide: 64, sticky: 128, armed: 256, stun: 512 };
   const SIM_DT = 1 / MCS.TICK_RATE;
 
   class Game {
@@ -24,8 +24,9 @@
       this.room = null;
       this.active = false;
       this.keys = {};
-      this.mouse = { x: null, y: null, down: false };
-      this.touch = { dx: 0, dy: 0, kick: false, dash: false };
+      this.mouse = { x: null, y: null, down: false, right: false, trail: [] };
+      this.touch = { dx: 0, dy: 0, kick: false, dash: false, lob: false, skill: false };
+      this.latch = { kick: false, lob: false, skill: false };
       this.lastInputSent = 0;
       this.lastInputJson = '';
       this.raf = null;
@@ -53,6 +54,9 @@
         chatForm: document.getElementById('chatFormGame'), chatInput: document.getElementById('chatInputGame'),
         mobile: document.getElementById('mobileControls'), netInfo: document.getElementById('netInfo'),
         hud: document.getElementById('hud'),
+        skill: document.getElementById('skillMeter'), skillName: document.getElementById('skillName'), skillFill: document.getElementById('skillFill'),
+        comboRed: document.getElementById('comboRed'), comboBlue: document.getElementById('comboBlue'),
+        chaos: document.getElementById('chaosChip'), wind: document.getElementById('windChip'),
       };
       this.bannerTimer = null;
       this._lastClockSecond = -1;
@@ -64,7 +68,10 @@
       this.rules = MCS.sanitizeRules(rules);
       this.setSides(sides || (this.room && this.room.sides));
       this.renderer.setGoalWidth(this.rules.goalWidth);
+      this.renderer.setArena(this.rules.arena);
+      this.renderer.rules = this.rules;
       this.renderer.particles = [];
+      this.el.chaos.classList.add('hidden'); this.el.wind.classList.add('hidden');
       this.snaps = []; this.inputHistory = []; this.replay = null; this.lastPred = null; this.clock.offset = null;
       this.predErr = { x: 0, y: 0 };
       this.active = true;
@@ -83,6 +90,16 @@
       this.renderer.setTeams(this.kits, this.teamColors, { red: this.nationName('red').toUpperCase(), blue: this.nationName('blue').toUpperCase() });
       document.documentElement.style.setProperty('--teamRed', this.teamColors.red);
       document.documentElement.style.setProperty('--teamBlue', this.teamColors.blue);
+      this.updateSkillLabel();
+    }
+    updateSkillLabel() {
+      const team = this.mySlot ? this.mySlot.split(':')[0] : null;
+      const show = !!team && this.rules.specials;
+      this.el.skill.classList.toggle('hidden', !show);
+      if (!show) return;
+      const sp = Teams.specialFor(this.sides[team]);
+      this.el.skillName.textContent = `${sp.icon} ${sp.name}`;
+      this.el.skill.title = sp.desc;
     }
     nationName(team) { const n = Teams.get(this.sides ? this.sides[team] : null); return n ? n.name : team; }
 
@@ -100,6 +117,7 @@
       const newSlot = me ? me.slot : null;
       if (newSlot !== this.mySlot) { this.lastPred = null; this.predErr = { x: 0, y: 0 }; this.inputHistory = []; }
       this.mySlot = newSlot;
+      if (this.sides) this.updateSkillLabel();
       this.updateSpectatorBar();
       if (room && room.status === 'ended') {
         this.el.btnRematch.disabled = room.hostId !== this.net.id;
@@ -151,6 +169,8 @@
       if (snap.sd) tag = 'SUDDEN DEATH';
       else if (snap.state === 'kickoff') tag = 'KICK OFF';
       this.setClock(snap.time, tag, snap);
+      if (snap.gw) this.renderer.setGoalWidth(snap.gw);
+      this.updateMatchHud(snap);
       if (snap.state === 'countdown' && snap.cd > 0) {
         if (this._lastCd !== snap.cd) { this._lastCd = snap.cd; this.showBanner(String(snap.cd), '', 'gold', 900); this.audio.countdown(snap.cd); }
       } else this._lastCd = 0;
@@ -185,13 +205,14 @@
         const pa = A.players[i] && A.players[i].id === pb.id ? A.players[i] : pb;
         return Object.assign({}, pb, { x: this.lerp(pa.x, pb.x, t), y: this.lerp(pa.y, pb.y, t), r: this.lerp(pa.r, pb.r, t) });
       });
-      const ball = Object.assign({}, B.ball, { x: this.lerp(A.ball.x, B.ball.x, t), y: this.lerp(A.ball.y, B.ball.y, t), r: this.lerp(A.ball.r, B.ball.r, t) });
-      return Object.assign({}, B, { players, ball });
+      const ball = Object.assign({}, B.ball, { x: this.lerp(A.ball.x, B.ball.x, t), y: this.lerp(A.ball.y, B.ball.y, t), r: this.lerp(A.ball.r, B.ball.r, t), z: this.lerp(A.ball.z || 0, B.ball.z || 0, t) });
+      return Object.assign({}, B, { players, ball, t: this.lerp(A.t, B.t, t) });
     }
     extrapolate(S, dt) {
       return Object.assign({}, S, {
         players: S.players.map(p => Object.assign({}, p, { x: p.x + p.vx * dt, y: p.y + p.vy * dt })),
-        ball: Object.assign({}, S.ball, { x: S.ball.x + S.ball.vx * dt, y: S.ball.y + S.ball.vy * dt }),
+        ball: Object.assign({}, S.ball, { x: S.ball.x + S.ball.vx * dt, y: S.ball.y + S.ball.vy * dt, z: Math.max(0, (S.ball.z || 0) + (S.ball.vz || 0) * dt) }),
+        t: S.t + dt * MCS.TICK_RATE,
       });
     }
 
@@ -216,9 +237,11 @@
       const tickLocal = snap.t * tickMs + this.clock.offset - owl;
       const horizon = now + owl;                                         // when our current input lands
       const body = { x: sp.x, y: sp.y, vx: sp.vx, vy: sp.vy, r: sp.r, dashCooldown: sp.dc || 0, dashTime: sp.dtm || 0 };
-      const st = { speed: !!(sp.fx & FX.speed), shrink: !!(sp.fx & FX.shrink), frozen: !!(sp.fx & FX.frozen) };
+      const st = { speed: !!(sp.fx & FX.speed), shrink: !!(sp.fx & FX.shrink), frozen: !!(sp.fx & (FX.frozen | FX.stun)) };
+      // Slides are a server-only impulse: don't predict through them.
+      if (sp.fx & FX.slide) return null;
       const team = this.mySlot.split(':')[0];
-      const gh = this.rules.goalWidth / 2;
+      const gh = (snap.gw || this.rules.goalWidth) / 2;
       // Replay whole server ticks on the server's own grid: tick k starts at
       // tickLocal + (k-1)*tickMs and uses the input that had reached the server by then.
       for (let k = 1; k <= 40; k++) {
@@ -226,7 +249,7 @@
         if (start + tickMs > horizon) break;
         const input = this.inputAt(start - owl);
         Physics.integratePlayer(body, input, this.rules, SIM_DT, st, snap.ball, this.traits ? this.traits[team] : null);
-        Physics.confinePlayer(body, team, snap.state, snap.ko, gh);
+        Physics.confinePlayer(body, team, snap.state, snap.ko, gh, this.rules, snap.t + k);
       }
       return body;
     }
@@ -283,12 +306,50 @@
       const myTeam = this.mySlot ? MCS.parseSlot(this.mySlot).team : null;
       for (const e of snap.events || []) {
         switch (e.type) {
-          case 'kick':
-            R.burst(e.x, e.y, { n: 6 + Math.round(e.power * 4), color: e.rocket ? '#ef476f' : '#fff', speed: 120 * e.power });
-            this.audio.kick(e.power, e.rocket);
-            if (e.rocket) R.kickShake(8); else if (e.slot === this.mySlot) R.kickShake(2.5);
-            if (R.crowd && e.rocket) R.crowd.pulse(null, 0.3);
+          case 'kick': {
+            const hot = e.rocket || e.special === 'thunder' || e.combo;
+            R.burst(e.x, e.y, { n: 6 + Math.round(e.power * 4), color: e.combo ? '#ff9f1c' : hot ? '#ef476f' : e.special === 'laser' ? '#4cc9f0' : '#fff', speed: 120 * e.power });
+            this.audio.kick(e.power, hot);
+            if (e.lob) this.audio.lob();
+            if (hot) R.kickShake(8); else if (e.slot === this.mySlot) R.kickShake(2.5 + (e.charge || 0) * 3);
+            if (R.crowd && hot) R.crowd.pulse(null, 0.3);
+            if (e.combo) this.toast(`🔥 ${this.playerName(e.slot)} unleashes the combo shot!`, e.team);
             break;
+          }
+          case 'special': {
+            const sp = Teams.specialFor(this.sides[e.team]);
+            R.specialFx(e.x, e.y, e.kind, this.teamColors[e.team]);
+            this.audio.special(e.kind);
+            R.callout(e.slot, `${sp.icon} ${sp.name.toUpperCase()}`, this.teamColors[e.team]);
+            if (R.crowd) R.crowd.pulse(e.team, 0.35);
+            if (e.kind === 'shockwave') R.kickShake(10);
+            break;
+          }
+          case 'tackle':
+            R.burst(e.x, e.y, { n: 14, color: '#c9a66b', speed: 160, life: 0.6 }); this.audio.tackle();
+            if (R.crowd) R.crowd.pulse(e.team, 0.2);
+            break;
+          case 'pass':
+            this.audio.combo(e.chain, e.ready);
+            if (e.ready) { this.toast(`🔥 ${e.chain}-pass combo! ${this.nationName(e.team)}'s next shot is powered up`, e.team); if (R.crowd) R.crowd.pulse(e.team, 0.3); }
+            break;
+          case 'comboBroken': this.audio.comboBreak(); break;
+          case 'save':
+            this.toast(`🧤 Great save by ${this.playerName(e.slot)}!`, e.team); this.audio.save();
+            if (R.crowd) { R.crowd.gasp(); R.crowd.pulse(e.team, 0.4); }
+            break;
+          case 'chaos': {
+            const c = MCS.CHAOS[e.kind];
+            this.showBanner(`${c.icon} ${c.label.toUpperCase()}`, c.desc, 'gold', 2200);
+            this.audio.chaos();
+            if (R.crowd) R.crowd.pulse(null, 0.45);
+            break;
+          }
+          case 'chaosEnd': this.toast(`${MCS.CHAOS[e.kind].label} is over`); break;
+          case 'wind': R.setWind(e.x, e.y); break;
+          case 'bumper': R.burst(e.x, e.y, { n: 10, color: '#7bdff2', speed: 200, life: 0.35 }); R.bumperHit(e.x, e.y); this.audio.bumper(); break;
+          case 'land': this.audio.bounce(140, false); break;
+          case 'emote': this.showEmote(e.slot, e.id); break;
           case 'bounce':
             R.burst(e.x, e.y, { n: 4, color: 'rgba(255,255,255,.6)', speed: 60 }); this.audio.bounce(e.speed, e.post);
             if (e.post) { R.kickShake(3); if (R.crowd) R.crowd.gasp(); if (e.speed > 350) this.audio.gasp(); }
@@ -315,6 +376,9 @@
             const who = e.scorer ? this.playerName(e.scorer) : 'Nobody';
             let sub = e.ownGoal ? `Own goal by ${who}` : `${who}${e.assist ? ' · assist ' + this.playerName(e.assist) : ''}`;
             if (e.speed > 850) sub += ' · ROCKET!';
+            if (e.combo) sub += ' · COMBO GOAL';
+            if (e.special === 'thunder') sub += ' · THUNDERBOLT';
+            if (e.points > 1) sub += ' · DOUBLE POINTS';
             this.showBanner(e.sd ? 'GOLDEN GOAL!' : `GOAL! ${this.nationName(e.team).toUpperCase()}`, sub, e.team, 2600);
             this.startReplay(now);
             break;
@@ -330,6 +394,36 @@
     }
 
     // ---- HUD ---------------------------------------------------------------
+    /** Skill meter, combo pips, chaos and wind chips from the latest snapshot. */
+    updateMatchHud(snap) {
+      const me = this.mySlot && snap.players.find(p => p.id === this.mySlot);
+      if (me && this.rules.specials) {
+        const full = me.m >= 1 || me.sp;
+        this.el.skillFill.style.width = `${Math.round((me.sp ? 1 : me.m) * 100)}%`;
+        this.el.skill.classList.toggle('full', !!full && !me.sp);
+        this.el.skill.classList.toggle('armed', !!me.sp);
+        if (full && !this._skillWasFull && !me.sp) this.audio.skillReady();
+        this._skillWasFull = !!full;
+      }
+      const cb = snap.cb || [0, 0, 0, 0];
+      const pips = (n, ready) => ready ? '🔥 COMBO' : n > 0 ? '●'.repeat(n) + '○'.repeat(Math.max(0, 3 - n)) : '';
+      this.el.comboRed.textContent = pips(cb[0], cb[2]); this.el.comboBlue.textContent = pips(cb[1], cb[3]);
+      this.el.comboRed.classList.toggle('ready', !!cb[2]); this.el.comboBlue.classList.toggle('ready', !!cb[3]);
+      if (snap.chaos) {
+        const c = MCS.CHAOS[snap.chaos.k];
+        this.el.chaos.textContent = `${c.icon} ${c.label} · ${Math.ceil(snap.chaos.t)}s`;
+        this.el.chaos.classList.remove('hidden');
+      } else this.el.chaos.classList.add('hidden');
+      if (snap.wind) {
+        const [wx, wy] = snap.wind, a = Math.atan2(wy, wx), f = Math.hypot(wx, wy);
+        const arrows = ['→', '↘', '↓', '↙', '←', '↖', '↑', '↗'];
+        const idx = ((Math.round(a / (Math.PI / 4)) % 8) + 8) % 8;
+        this.el.wind.textContent = `🌬️ ${arrows[idx]} ${f > 140 ? 'strong' : f > 90 ? 'moderate' : 'light'}`;
+        this.el.wind.classList.remove('hidden');
+        this.renderer.setWind(wx, wy);
+      } else this.el.wind.classList.add('hidden');
+    }
+
     setScore(r, b) { this.el.scoreRed.textContent = r; this.el.scoreBlue.textContent = b; }
     setClock(seconds, tag, snap) {
       const s = Math.max(0, Math.ceil(seconds));
@@ -394,15 +488,28 @@
         if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
         if (e.key === 'Enter') { e.preventDefault(); this.el.chatForm.classList.remove('hidden'); this.el.chatInput.focus(); return; }
         if (e.key === 'm' || e.key === 'M') { const m = this.audio.toggleMute(); this.toast(m ? 'Sound off' : 'Sound on'); }
+        const emote = MCS.EMOTES.find(em => em.key === e.key);
+        if (emote && !e.repeat) { this.sendEmote(emote.id); return; }
         if (e.key === 'p' || e.key === 'P') { this.predictionEnabled = !this.predictionEnabled; localStorage.setItem('mcs.predict', this.predictionEnabled ? '1' : '0'); this.toast(`Prediction ${this.predictionEnabled ? 'on' : 'off'}`); }
         if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'Shift'].includes(e.key)) e.preventDefault();
         this.keys[e.code] = true;
+        // Latch quick taps so a press shorter than one frame still reaches the server.
+        if (!e.repeat) {
+          if (e.code === 'Space' || e.code === 'KeyX') this.latch.kick = true;
+          if (e.code === 'KeyF') this.latch.lob = true;
+          if (e.code === 'KeyE' || e.code === 'KeyQ') this.latch.skill = true;
+        }
       });
       window.addEventListener('keyup', (e) => { this.keys[e.code] = false; });
-      window.addEventListener('blur', () => { this.keys = {}; this.mouse.down = false; });
-      c.addEventListener('mousemove', (e) => { const p = this.toWorld(e); this.mouse.x = p.x; this.mouse.y = p.y; });
-      c.addEventListener('mousedown', (e) => { if (e.button === 0) this.mouse.down = true; });
-      window.addEventListener('mouseup', () => { this.mouse.down = false; });
+      window.addEventListener('blur', () => { this.keys = {}; this.mouse.down = false; this.mouse.right = false; });
+      c.addEventListener('mousemove', (e) => {
+        const p = this.toWorld(e); this.mouse.x = p.x; this.mouse.y = p.y;
+        const tr = this.mouse.trail, now = performance.now();
+        tr.push({ t: now, x: p.x, y: p.y });
+        while (tr.length && tr[0].t < now - 160) tr.shift();
+      });
+      c.addEventListener('mousedown', (e) => { if (e.button === 0) { this.mouse.down = true; this.latch.kick = true; } if (e.button === 2) { this.mouse.right = true; this.latch.lob = true; } });
+      window.addEventListener('mouseup', (e) => { if (e.button === 2) this.mouse.right = false; else this.mouse.down = false; });
       c.addEventListener('contextmenu', (e) => e.preventDefault());
       this.el.chatForm.addEventListener('submit', (e) => {
         e.preventDefault();
@@ -436,7 +543,54 @@
         b.addEventListener('pointerdown', (e) => { e.preventDefault(); this.touch[key] = true; });
         ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => b.addEventListener(ev, () => { this.touch[key] = false; }));
       };
-      hold('mKick', 'kick'); hold('mDash', 'dash');
+      hold('mKick', 'kick'); hold('mDash', 'dash'); hold('mLob', 'lob'); hold('mSkill', 'skill');
+      const emoteBtn = document.getElementById('mEmote'), wheel = document.getElementById('emoteWheel');
+      emoteBtn.addEventListener('click', () => wheel.classList.toggle('hidden'));
+      for (const em of MCS.EMOTES) {
+        const b = document.createElement('button'); b.textContent = em.text; b.type = 'button';
+        b.addEventListener('click', () => { this.sendEmote(em.id); wheel.classList.add('hidden'); });
+        wheel.appendChild(b);
+      }
+    }
+
+    sendEmote(id) {
+      if (!this.mySlot) return;
+      const now = performance.now();
+      if (now - (this._lastEmote || 0) < 700) return;
+      this._lastEmote = now;
+      this.net.send('emote', { id });
+    }
+    showEmote(slot, id) {
+      const em = MCS.EMOTES.find(x => x.id === id); if (!em) return;
+      const team = slot.split(':')[0];
+      this.renderer.emote(slot, em.text, this.teamColors ? this.teamColors[team] : '#fff');
+      const myTeam = this.mySlot ? this.mySlot.split(':')[0] : null;
+      if (team === myTeam && slot !== this.mySlot) this.audio.ping(id);
+    }
+
+    /**
+     * Curve: sweep the mouse sideways (relative to where you aim) while you
+     * kick, or run across the ball. Positive bends clockwise on screen.
+     */
+    currentCurve(input) {
+      const me = this.lastPred || this.myView;
+      if (!me || input.aimX === null) return 0;
+      let ax = input.aimX - me.x, ay = input.aimY - me.y; const al = Math.hypot(ax, ay);
+      if (al < 1) return 0;
+      ax /= al; ay /= al;
+      const tr = this.mouse.trail;
+      let curve = 0;
+      if (tr.length >= 2 && performance.now() - tr[tr.length - 1].t < 120) {
+        const a = tr[0], b = tr[tr.length - 1], dt = Math.max(16, b.t - a.t) / 1000;
+        const mvx = (b.x - a.x) / dt, mvy = (b.y - a.y) / dt;
+        curve = (ax * mvy - ay * mvx) / 900;
+      }
+      if (Math.abs(curve) < 0.15) {
+        const mx = (input.right ? 1 : 0) - (input.left ? 1 : 0), my = (input.down ? 1 : 0) - (input.up ? 1 : 0);
+        const ml = Math.hypot(mx, my);
+        if (ml) curve = ((ax * my - ay * mx) / ml) * 0.6;
+      }
+      return Math.max(-1, Math.min(1, Math.round(curve * 100) / 100));
     }
 
     currentInput() {
@@ -446,16 +600,19 @@
         down: !!(k.KeyS || k.ArrowDown) || this.touch.dy > 0.3,
         left: !!(k.KeyA || k.ArrowLeft) || this.touch.dx < -0.3,
         right: !!(k.KeyD || k.ArrowRight) || this.touch.dx > 0.3,
-        kick: !!(k.Space || k.KeyX) || this.mouse.down || this.touch.kick,
+        kick: !!(k.Space || k.KeyX) || this.mouse.down || this.touch.kick || this.latch.kick,
         dash: !!(k.ShiftLeft || k.ShiftRight || k.KeyC) || this.touch.dash,
+        lob: !!k.KeyF || this.mouse.right || this.touch.lob || this.latch.lob,
+        skill: !!(k.KeyE || k.KeyQ) || this.touch.skill || this.latch.skill,
         aimX: this.mouse.x, aimY: this.mouse.y,
       };
     }
     sendInput(now) {
       if (!this.mySlot || !this.net.id) return;
       const input = this.currentInput();
+      input.curve = input.kick || input.lob ? this.currentCurve(input) : 0;
       this.recordInput(now, input);
-      const json = JSON.stringify([input.up, input.down, input.left, input.right, input.kick, input.dash]);
+      const json = JSON.stringify([input.up, input.down, input.left, input.right, input.kick, input.dash, input.lob, input.skill]);
       const changed = json !== this.lastInputJson;
       const anyHeld = json.includes('true');
       // Changes go out immediately; while something is held we stream at
@@ -464,6 +621,7 @@
       if (changed || now - this.lastInputSent >= interval) {
         this.net.send('input', input);
         this.lastInputSent = now; this.lastInputJson = json;
+        this.latch.kick = this.latch.lob = this.latch.skill = false;
       }
     }
 
@@ -488,6 +646,7 @@
           this.lastPred = pred; this.lastPredAt = now;
         } else this.lastPred = null;
       }
+      this.myView = view && this.mySlot ? view.players.find(p => p.id === this.mySlot) : null;
       this.renderer.draw(view, { mySlot: this.mySlot, dt, replay: !!(view && view._replay) });
       if (this.renderer.crowd) this.audio.setCrowd(this.renderer.crowd.level());
       if (this.el.netInfo && (now - (this._netInfoAt || 0)) > 500) {

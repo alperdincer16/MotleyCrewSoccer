@@ -145,6 +145,30 @@
       this.noise(0.05, { gain: 0.18, filter: 2300, q: 1.5, type: 'bandpass', start: 0.5 });
     }
     end() { this.whistle(true); }
+
+    // ---- T-27..T-29 ----------------------------------------------------------
+    lob() { this.tone(260, 0.25, { type: 'sine', gain: 0.12, slide: 520 }); }
+    special(kind) {
+      if (kind === 'shockwave') { this.noise(0.5, { gain: 0.45, filter: 300 }); this.tone(90, 0.5, { type: 'sawtooth', gain: 0.2, slide: 40 }); return; }
+      if (kind === 'tackle') { this.noise(0.35, { gain: 0.25, filter: 1500 }); return; }
+      if (kind === 'sprint') { this.tone(300, 0.3, { type: 'square', gain: 0.08, slide: 1200 }); return; }
+      // armed kick moves: rising power chord
+      [392, 494, 587, 784].forEach((f, i) => this.tone(f, 0.22, { type: 'triangle', gain: 0.12, start: i * 0.04 }));
+    }
+    tackle() { this.noise(0.18, { gain: 0.35, filter: 600 }); this.tone(110, 0.12, { type: 'triangle', gain: 0.2, slide: 60 }); }
+    combo(n, ready) {
+      const base = 520 * Math.pow(1.26, Math.max(0, n - 1));
+      this.tone(base, 0.12, { type: 'triangle', gain: 0.12 });
+      if (ready) [base * 1.26, base * 1.5].forEach((f, i) => this.tone(f, 0.16, { type: 'triangle', gain: 0.12, start: 0.08 + i * 0.07 }));
+    }
+    comboBreak() { this.tone(330, 0.18, { type: 'sine', gain: 0.07, slide: 160 }); }
+    save() { this.noise(0.25, { gain: 0.3, filter: 900 }); this.tone(200, 0.15, { type: 'triangle', gain: 0.15 }); }
+    chaos() { [523, 659, 784, 1047].forEach((f, i) => this.tone(f, 0.18, { type: 'square', gain: 0.07, start: i * 0.09 })); }
+    bumper() { this.tone(880, 0.1, { type: 'square', gain: 0.08, slide: 1600 }); }
+    skillReady() { [660, 990].forEach((f, i) => this.tone(f, 0.12, { type: 'sine', gain: 0.1, start: i * 0.08 })); }
+    ping(id) { this.tone(id === 'back' ? 520 : 1040, 0.09, { type: 'sine', gain: 0.1 }); this.tone(id === 'back' ? 390 : 1560, 0.09, { type: 'sine', gain: 0.08, start: 0.09 }); }
+    celebrate() { [523, 659, 784].forEach((f, i) => this.tone(f, 0.3, { type: 'triangle', gain: 0.09, start: i * 0.12 })); }
+    levelUp() { [523, 659, 784, 1047, 1319].forEach((f, i) => this.tone(f, 0.25, { type: 'triangle', gain: 0.12, start: i * 0.1 })); }
   }
 
   window.GameAudio = GameAudio;

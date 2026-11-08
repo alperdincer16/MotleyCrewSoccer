@@ -103,6 +103,7 @@ class Client {
       case C2S.START: return room && room.startGame(this);
       case C2S.REMATCH: return room && room.rematch(this);
       case C2S.INPUT: return room && room.handleInput(this, msg);
+      case C2S.EMOTE: return room && room.emote(this, msg.id);
       case C2S.CHAT: return room && typeof msg.text === 'string' && msg.text.trim() && room.chat(this, msg.text.trim());
       default: return this.error('unknown', `Unknown message ${msg.type}`);
     }

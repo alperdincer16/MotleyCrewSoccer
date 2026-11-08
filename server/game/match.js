@@ -13,18 +13,22 @@
 const MCS = require('../../shared/rules');
 const Physics = require('../../shared/physics');
 const Teams = require('../../shared/teams');
-const { FIELD, PLAYER_RADIUS, BALL_RADIUS, TEAMS, POSITIONS, BOOSTS, FORMATION } = MCS;
+const { FIELD, PLAYER_RADIUS, BALL_RADIUS, TEAMS, POSITIONS, BOOSTS, FORMATION, CHAOS, CHAOS_IDS } = MCS;
 const { FEEL } = Physics;
 
 const W = FIELD.width;
 const H = FIELD.height;
 
-const EFFECT_FLAGS = { speed: 1, rocket: 2, frozen: 4, shrink: 8, magnet: 16, shield: 32 };
+const EFFECT_FLAGS = { speed: 1, rocket: 2, frozen: 4, shrink: 8, magnet: 16, shield: 32, slide: 64, sticky: 128, armed: 256, stun: 512 };
+const BALL_FLAGS = { giant: 1, thunder: 2, fire: 4, laser: 8 };
+const ARMED_SECONDS = 5;        // a kick-type signature move stays armed this long
+const COMBO_PASSES = 3;         // completed passes in a row that power up the next shot
+const PASS_WINDOW = 3;          // seconds between a kick and the team-mate's touch
 
 function len(x, y) { return Math.hypot(x, y); }
 function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 function rnd(a, b) { return a + Math.random() * (b - a); }
-function blankInput() { return { up: false, down: false, left: false, right: false, kick: false, dash: false, aimX: null, aimY: null }; }
+function blankInput() { return { up: false, down: false, left: false, right: false, kick: false, dash: false, lob: false, skill: false, curve: 0, aimX: null, aimY: null }; }
 
 class Match {
   /**
@@ -52,8 +56,13 @@ class Match {
     this.lastTouch = null;   // { slot, team, tick }
     this.prevTouch = null;
     this.lastKick = null;
+    this.combo = { red: { chain: 0, ready: false }, blue: { chain: 0, ready: false } };
+    this.chaos = null;                     // { kind, t } while a chaos event runs
+    this.lastChaos = null;
+    this.chaosTimer = this.rules.chaosEvery;
+    this.wind = { x: 0, y: 0, tx: 0, ty: 0, timer: 0 };
 
-    this.ball = { x: W / 2, y: H / 2, vx: 0, vy: 0, r: BALL_RADIUS, effects: {} };
+    this.ball = { x: W / 2, y: H / 2, z: 0, vx: 0, vy: 0, vz: 0, spin: 0, r: BALL_RADIUS, effects: {}, owner: null };
 
     this.players = [];
     for (const team of TEAMS) {
@@ -69,6 +78,11 @@ class Match {
           kickCooldown: 0, dashCooldown: 0, dashTime: 0, kickFlash: 0,
           kickBuffer: 0,      // seconds left in which a recent kick press still counts
           kickHeld: false,
+          chargeT: 0,         // seconds the kick (or lob) button has been held
+          skillHeld: false, skillPress: false,
+          meter: 0,           // signature-move meter 0..1
+          armed: null,        // kick-type signature move waiting for the next kick
+          look: info.look || null,
           effects: {},
           stats: { goals: 0, ownGoals: 0, assists: 0, kicks: 0, touches: 0, pickups: 0, saves: 0 },
         });
@@ -79,10 +93,10 @@ class Match {
 
   // ---- Roster management ---------------------------------------------------
   player(slotId) { return this.players.find(p => p.id === slotId); }
-  setHuman(slotId, name) { const p = this.player(slotId); if (p) { p.isBot = false; p.name = name; } }
+  setHuman(slotId, name, look) { const p = this.player(slotId); if (p) { p.isBot = false; p.name = name; p.look = look || null; } }
   setBot(slotId) {
     const p = this.player(slotId);
-    if (p) { p.isBot = true; p.name = Teams.botName(this.sides[p.team], p.team, p.pos); p.input = blankInput(); }
+    if (p) { p.isBot = true; p.name = Teams.botName(this.sides[p.team], p.team, p.pos); p.input = blankInput(); p.look = null; }
   }
   setInput(slotId, input) {
     const p = this.player(slotId);
@@ -90,6 +104,11 @@ class Match {
     p.input.up = !!input.up; p.input.down = !!input.down;
     p.input.left = !!input.left; p.input.right = !!input.right;
     p.input.dash = !!input.dash;
+    p.input.lob = !!input.lob;
+    p.input.curve = Number.isFinite(input.curve) ? clamp(input.curve, -1, 1) : 0;
+    const skill = !!input.skill;
+    if (skill && !p.skillHeld) p.skillPress = true;
+    p.skillHeld = skill;
     const kick = !!input.kick;
     if (kick && !p.kickHeld && !p.isBot) p.kickBuffer = FEEL.kickBuffer;   // humans: a press just before contact still counts
     p.kickHeld = kick;
@@ -101,7 +120,7 @@ class Match {
   // ---- Geometry helpers ----------------------------------------------------
   goalCenter(team) { return { x: team === 'red' ? 0 : W, y: H / 2 }; }
   attackDir(team) { return team === 'red' ? 1 : -1; }   // red attacks +x
-  goalHalfWidth() { return this.rules.goalWidth / 2; }
+  goalHalfWidth() { return this.rules.goalWidth / 2 * (this.chaos && this.chaos.kind === 'tinyGoals' ? 0.55 : 1); }
 
   resetPositions() {
     for (const p of this.players) {
@@ -111,12 +130,14 @@ class Match {
       p.y = p.team === 'red' ? f.fy * H : (1 - f.fy) * H;
       p.vx = 0; p.vy = 0; p.dashTime = 0;
     }
-    this.ball.x = W / 2; this.ball.y = H / 2; this.ball.vx = 0; this.ball.vy = 0;
+    const b = this.ball;
+    b.x = W / 2; b.y = H / 2; b.vx = 0; b.vy = 0; b.z = 0; b.vz = 0; b.spin = 0; b.owner = null;
+    this.combo.red.chain = 0; this.combo.blue.chain = 0; this.combo.red.ready = false; this.combo.blue.ready = false;
   }
 
   emit(ev) { this.events.push(ev); }
 
-  effectState(p) { return { speed: !!p.effects.speed, shrink: !!p.effects.shrink, frozen: !!p.effects.frozen }; }
+  effectState(p) { return { speed: !!p.effects.speed, shrink: !!p.effects.shrink, frozen: !!(p.effects.frozen || p.effects.stun) }; }
 
   // ---- Main step -------------------------------------------------------------
   step(dt) {
@@ -165,10 +186,17 @@ class Match {
       if (this.kickoffTimer >= FEEL.kickoffTimeout) { this.state = 'play'; this.emit({ type: 'kickoffOpen' }); }
     }
 
+    this.updateChaos(dt);
+    this.updateWind(dt);
+
     // Players ----------------------------------------------------------------
-    for (const p of this.players) this.integratePlayer(p, dt);
+    for (const p of this.players) {
+      if (p.skillPress) { p.skillPress = false; this.activateSpecial(p); }
+      if (this.state === 'play' && this.rules.specials) this.addMeter(p, 0.025 * dt);
+      this.integratePlayer(p, dt);
+    }
     this.collidePlayers();
-    for (const p of this.players) Physics.confinePlayer(p, p.team, this.state, this.kickoffTeam, this.goalHalfWidth());
+    for (const p of this.players) Physics.confinePlayer(p, p.team, this.state, this.kickoffTeam, this.goalHalfWidth(), this.rules, this.tick);
 
     // Ball: sub-stepped so a fast shot can't pass through a post or a player.
     this.applyMagnets(dt);
@@ -176,6 +204,8 @@ class Match {
     const steps = Math.max(1, Math.min(6, Math.ceil(speed * dt / (this.ball.r * 0.75))));
     for (let i = 0; i < steps; i++) {
       this.moveBall(dt / steps);
+      const b = this.ball;
+      this._heading = { x: b.x, y: b.y, vx: b.vx, vy: b.vy };
       for (const p of this.players) this.collideBallPlayer(p);
     }
     for (const p of this.players) this.tryKick(p, dt);
@@ -194,6 +224,8 @@ class Match {
     p.kickCooldown = Math.max(0, p.kickCooldown - dt);
     p.kickFlash = Math.max(0, p.kickFlash - dt);
     p.kickBuffer = Math.max(0, p.kickBuffer - dt);
+    // Charge: holding kick (or lob) without kicking builds power. Humans only.
+    if ((p.input.kick || p.input.lob) && !p.isBot) p.chargeT += dt; else p.chargeT = 0;
     const dashed = Physics.integratePlayer(p, p.input, this.rules, dt, this.effectState(p), this.ball, this.traits[p.team]);
     if (dashed) this.emit({ type: 'dash', slot: p.id, x: p.x, y: p.y });
   }
@@ -209,6 +241,15 @@ class Match {
         if (d === 0 || d >= minD) continue;
         const nx = dx / d, ny = dy / d;
         const overlap = minD - d;
+        // Sliding tackle: the slider knocks an unshielded opponent over.
+        if (a.team !== b.team) {
+          for (const [s, o] of [[a, b], [b, a]]) {
+            if (s.effects.slide && !o.effects.shield && !o.effects.stun) {
+              o.effects.stun = 0.8;
+              this.emit({ type: 'tackle', slot: s.id, victim: o.id, team: s.team, x: o.x, y: o.y });
+            }
+          }
+        }
         // Shield: a shielded player is immovable versus opponents.
         const aFixed = !!a.effects.shield && a.team !== b.team;
         const bFixed = !!b.effects.shield && b.team !== a.team;
@@ -231,30 +272,91 @@ class Match {
   // ---- Ball ------------------------------------------------------------------
   ballRadius() { return this.ball.effects.giant ? BALL_RADIUS * 2.2 : BALL_RADIUS; }
 
-  /** Integrate the ball by dt and resolve wall/post contact. */
+  /** Integrate the ball by dt: height, spin, wind, walls, posts, crossbar, bumpers. */
   moveBall(dt) {
     const b = this.ball;
     b.r = this.ballRadius();
-    const drag = Math.pow(b.effects.giant ? Math.min(0.999, this.rules.ballDrag + 0.004) : this.rules.ballDrag, dt * 60);
+    const arena = Physics.arenaOf(this.rules);
+    const bouncy = this.chaos && this.chaos.kind === 'bouncyBall';
+    let dragBase = Physics.ballDragFor(this.rules);
+    if (b.effects.giant) dragBase = Math.min(0.999, dragBase + 0.004);
+    if (bouncy) dragBase = Math.max(dragBase, 0.996);
+    if (b.z > 0) dragBase = Math.min(0.9995, dragBase + 0.004);   // less friction in the air
+    const drag = Math.pow(dragBase, dt * 60);
     b.vx *= drag; b.vy *= drag;
+
+    // Wind pushes the ball, airborne balls twice as much.
+    if (this.wind.x || this.wind.y) {
+      const k = b.z > 0 ? 2 : 1;
+      b.vx += this.wind.x * k * dt; b.vy += this.wind.y * k * dt;
+    }
+    // Spin bends the ball's path without changing its speed.
+    if (b.spin) {
+      const a = b.spin * dt, c = Math.cos(a), sn = Math.sin(a);
+      const vx = b.vx * c - b.vy * sn, vy = b.vx * sn + b.vy * c;
+      b.vx = vx; b.vy = vy;
+      b.spin *= Math.pow(FEEL.spinDecay, dt * 60);
+      if (Math.abs(b.spin) < 0.03) b.spin = 0;
+    }
+    // Height
+    if (b.z > 0 || b.vz > 0) {
+      b.vz -= FEEL.gravity * dt;
+      b.z += b.vz * dt;
+      if (b.z <= 0) {
+        b.z = 0;
+        if (b.vz < -160) { b.vz = -b.vz * 0.42; this.emit({ type: 'land', x: b.x, y: b.y }); } else b.vz = 0;
+      }
+    }
+
+    const max = b.effects.thunder ? FEEL.ballMaxSpeed * 1.35 : FEEL.ballMaxSpeed;
     const sp = len(b.vx, b.vy);
-    if (sp > FEEL.ballMaxSpeed) { b.vx = b.vx / sp * FEEL.ballMaxSpeed; b.vy = b.vy / sp * FEEL.ballMaxSpeed; }
-    if (sp < 2) { b.vx = 0; b.vy = 0; }
+    if (sp > max) { b.vx = b.vx / sp * max; b.vy = b.vy / sp * max; }
+    if (sp < 2 && b.z === 0) { b.vx = 0; b.vy = 0; }
     b.x += b.vx * dt;
     b.y += b.vy * dt;
-    const bounce = b.effects.giant ? Math.max(this.rules.ballBounce, 0.95) : this.rules.ballBounce;
-    const hitWall = Physics.confineToArena(b, b.r, bounce, true, this.goalHalfWidth());
-    const hitPost = Physics.collidePosts(b, bounce, this.goalHalfWidth());
-    if ((hitWall || hitPost) && sp > 120) this.emit({ type: 'bounce', x: b.x, y: b.y, speed: sp, post: hitPost });
+    let bounce = b.effects.giant ? Math.max(this.rules.ballBounce, 0.95) : this.rules.ballBounce;
+    bounce *= arena.ballBounce;
+    if (bouncy) bounce = Math.max(bounce, 1.02);
+    const gh = this.goalHalfWidth();
+    // Over the bar: a high ball hits the goal frame instead of entering it.
+    let hitBar = false;
+    if (b.z > FEEL.crossbar && Math.abs(b.y - H / 2) < gh) {
+      if (b.x < 0) { b.x = 0; if (b.vx < 0) b.vx = -b.vx * 0.45; hitBar = true; }
+      else if (b.x > W) { b.x = W; if (b.vx > 0) b.vx = -b.vx * 0.45; hitBar = true; }
+    }
+    const hitWall = Physics.confineToArena(b, b.r, bounce, true, gh);
+    const hitPost = Physics.collidePosts(b, bounce, gh);
+    if (hitWall || hitPost || hitBar) b.spin *= 0.4;
+    if ((hitWall || hitPost || hitBar) && sp > 120) this.emit({ type: 'bounce', x: b.x, y: b.y, speed: sp, post: hitPost || hitBar, bar: hitBar });
+    if (this.rules.arena === 'bumpers' && b.z < 30) {
+      const bp = Physics.collideBumpers(b, this.rules, this.tick, FEEL.bumperKick);
+      if (bp) {
+        b.spin = 0;
+        const s2 = len(b.vx, b.vy);
+        if (s2 < 420) { b.vx *= 420 / (s2 || 1); b.vy *= 420 / (s2 || 1); }
+        this.emit({ type: 'bumper', x: bp.x, y: bp.y });
+      }
+    }
   }
 
   collideBallPlayer(p) {
     const b = this.ball;
+    // A ball in the air sails over outfield players; keepers reach a little higher.
+    if (b.z > (p.pos === 'GK' ? FEEL.keeperReach : FEEL.headHeight)) return;
+    if (p.effects.stun) return;   // knocked-over players can't play the ball
     const dx = b.x - p.x, dy = b.y - p.y;
     const d = len(dx, dy);
     const minD = b.r + p.r;
     if (d >= minD || d === 0) return;
     const nx = dx / d, ny = dy / d;
+    // Thunderbolt: ploughs through outfield players, shoving them aside.
+    if (b.effects.thunder && p.pos !== 'GK' && p.team !== b.owner) {
+      p.vx += b.vx * 0.35; p.vy += b.vy * 0.35;
+      if (!p.effects.shield) p.effects.stun = 0.5;
+      return;
+    }
+    if (b.effects.thunder && p.pos === 'GK') { p.vx += b.vx * 0.25; p.vy += b.vy * 0.25; delete b.effects.thunder; }
+    const speedBefore = len(b.vx, b.vy);
     const overlap = minD - d;
     const ballShare = b.effects.giant ? 0.7 : 1;
     b.x += nx * overlap * ballShare; b.y += ny * overlap * ballShare;
@@ -270,23 +372,58 @@ class Match {
     const bn = b.vx * nx + b.vy * ny;
     if (bn < pushN + 40) { b.vx += nx * (pushN + 40 - bn); b.vy += ny * (pushN + 40 - bn); }
     // A dashing player that runs into the ball gives it a real whack.
-    if (p.dashTime > 0 && !p.effects.frozen) {
+    if (p.dashTime > 0 && !p.effects.frozen && !p.effects.slide) {
       const extra = 180;
       b.vx += nx * extra; b.vy += ny * extra;
+    }
+    // Sliding tackle: the slider takes the ball with them.
+    if (p.effects.slide) { b.vx = p.vx * 1.05 + nx * 60; b.vy = p.vy * 1.05 + ny * 60; }
+    // Sprint dribble: the ball is glued to the feet.
+    if (p.effects.sticky) {
+      const ps = len(p.vx, p.vy);
+      const fx = ps > 30 ? p.vx / ps : nx, fy = ps > 30 ? p.vy / ps : ny;
+      b.x = p.x + fx * (minD + 1); b.y = p.y + fy * (minD + 1);
+      b.vx = p.vx; b.vy = p.vy;
+    }
+    // Any opponent touch knocks a glued ball loose.
+    for (const o of this.players) if (o.team !== p.team && o.effects.sticky) delete o.effects.sticky;
+    b.spin = 0; b.z = Math.min(b.z, 0); b.vz = 0;
+    if (b.effects.fire && b.owner !== p.team) delete b.effects.fire;
+    if (b.effects.laser && b.owner !== p.team) delete b.effects.laser;
+    // Keeper save: a fast ball that was going in.
+    if (p.pos === 'GK' && speedBefore > 280 && (!this.lastTouch || this.lastTouch.slot !== p.id)) {
+      if (this._preTouchHeadingIn(p, this.goalCenter(p.team).x)) {
+        p.stats.saves++;
+        this.emit({ type: 'save', slot: p.id, team: p.team, x: b.x, y: b.y });
+      }
     }
     this.registerTouch(p, false);
   }
 
+  /** Was the ball heading into p's goal before this touch? (uses the last recorded heading) */
+  _preTouchHeadingIn(p, goalX) {
+    const h = this._heading;
+    if (!h) return false;
+    if ((goalX - h.x) * h.vx <= 0) return false;
+    const t = (goalX - h.x) / h.vx;
+    if (t <= 0 || t > 0.9) return false;
+    const yAt = h.y + h.vy * t;
+    return Math.abs(yAt - H / 2) < this.goalHalfWidth() + 25;
+  }
+
   tryKick(p, dt) {
-    const wants = p.input.kick || p.kickBuffer > 0;
-    if (!wants || p.kickCooldown > 0 || p.effects.frozen) return;
+    const wantsLob = p.input.lob;
+    const wants = p.input.kick || wantsLob || p.kickBuffer > 0;
+    if (!wants || p.kickCooldown > 0 || p.effects.frozen || p.effects.stun) return;
     const b = this.ball;
+    if (b.z > (p.pos === 'GK' ? FEEL.keeperReach : FEEL.headHeight)) return;
     const dx = b.x - p.x, dy = b.y - p.y;
     const d = len(dx, dy);
     if (d > b.r + p.r + FEEL.kickRange) return;
     let nx = dx / (d || 1), ny = dy / (d || 1);
     // Optional aim: the kick direction is blended toward the aim point.
-    if (p.input.aimX !== null && p.input.aimY !== null) {
+    const hasAim = p.input.aimX !== null && p.input.aimY !== null;
+    if (hasAim) {
       let ax = p.input.aimX - b.x, ay = p.input.aimY - b.y;
       const al = len(ax, ay);
       if (al > 1) {
@@ -295,24 +432,86 @@ class Match {
         if (dot > 0.2) { nx = nx * 0.45 + ax * 0.55; ny = ny * 0.45 + ay * 0.55; const l = len(nx, ny); nx /= l; ny /= l; }
       }
     }
-    let power = FEEL.kickSpeed * this.rules.kickPower * this.traits[p.team].kick;
-    let rocket = false;
+    // Charge: 0 for a tap, 1 for a full hold.
+    const charge = clamp((p.chargeT - FEEL.chargeStart) / (FEEL.chargeFull - FEEL.chargeStart), 0, 1);
+    let power = FEEL.kickSpeed * this.rules.kickPower * this.traits[p.team].kick * (1 + FEEL.chargeBonus * charge);
+    let rocket = false, special = null, comboShot = false;
+    let spin = p.input.curve * FEEL.curveMax;
     if (p.effects.rocket) { power *= 2.2; delete p.effects.rocket; rocket = true; }
     if (b.effects.giant) power *= 0.8;
-    b.vx = nx * power + p.vx * 0.3;
-    b.vy = ny * power + p.vy * 0.3;
+    delete b.effects.thunder; delete b.effects.fire; delete b.effects.laser;
+
+    // Armed signature move fires with this kick.
+    if (p.armed && p.effects.armed) {
+      special = p.armed;
+      const oppGoal = this.goalCenter(MCS.otherTeam(p.team));
+      if (special === 'thunder') { power *= 1.85; b.effects.thunder = 1.2; }
+      else if (special === 'banana') {
+        power *= 1.2;
+        // Bend toward goal: start aimed outside the target, let the spin bring it in.
+        let gx = oppGoal.x - b.x, gy = oppGoal.y - b.y; const gl = len(gx, gy) || 1; gx /= gl; gy /= gl;
+        let sign = Math.sign(p.input.curve) || Math.sign(nx * gy - ny * gx) || (b.y < H / 2 ? 1 : -1) * this.attackDir(p.team);
+        const off = -sign * 0.38, c = Math.cos(off), sn = Math.sin(off);
+        const rx = nx * c - ny * sn, ry = nx * sn + ny * c; nx = rx; ny = ry;
+        spin = sign * FEEL.curveMax * 0.75;
+      } else if (special === 'laser') {
+        const tgt = this.laserTarget(p);
+        let tx = tgt.x - b.x, ty = tgt.y - b.y; const tl = len(tx, ty) || 1;
+        nx = tx / tl; ny = ty / tl; spin = 0;
+        power = Math.max(power, FEEL.kickSpeed * 1.2);
+        b.effects.laser = 0.9;
+      }
+      p.armed = null; delete p.effects.armed;
+    }
+    // Combo shot: the team strung passes together.
+    const combo = this.combo[p.team];
+    if (combo.ready) { power *= 1.3; combo.ready = false; combo.chain = 0; comboShot = true; b.effects.fire = 1.6; }
+
+    if (wantsLob && !p.input.kick) {
+      b.vx = nx * power * FEEL.lobPower + p.vx * 0.3;
+      b.vy = ny * power * FEEL.lobPower + p.vy * 0.3;
+      b.vz = FEEL.lobLift * (1 + 0.35 * charge);
+      b.z = Math.max(b.z, 1);
+    } else {
+      b.vx = nx * power + p.vx * 0.3;
+      b.vy = ny * power + p.vy * 0.3;
+    }
+    b.spin = clamp(spin, -FEEL.curveMax, FEEL.curveMax);
+    b.owner = p.team;
     p.kickCooldown = FEEL.kickCooldown;
     p.kickBuffer = 0;
     p.kickFlash = 0.15;
+    p.chargeT = 0;
     p.stats.kicks++;
+    if (p.effects.sticky) delete p.effects.sticky;
+    this.addMeter(p, 0.06);
     this.registerTouch(p, true);
-    this.emit({ type: 'kick', slot: p.id, x: b.x, y: b.y, power: power / FEEL.kickSpeed, rocket });
+    this.emit({ type: 'kick', slot: p.id, team: p.team, x: b.x, y: b.y, power: power / FEEL.kickSpeed, rocket, lob: b.vz > 0, curve: Math.round(b.spin * 100) / 100, charge: Math.round(charge * 100) / 100, special, combo: comboShot });
+  }
+
+  /** Where a laser pass goes: the best-placed team-mate's run, else the far corner. */
+  laserTarget(p) {
+    const b = this.ball, dir = this.attackDir(p.team);
+    let best = null, bestScore = -Infinity;
+    for (const m of this.players) {
+      if (m.team !== p.team || m === p || m.pos === 'GK') continue;
+      const lead = { x: m.x + m.vx * 0.3, y: m.y + m.vy * 0.3 };
+      const dd = len(lead.x - b.x, lead.y - b.y);
+      if (dd < 80) continue;
+      const score = (lead.x - b.x) * dir - dd * 0.15;
+      if (score > bestScore) { bestScore = score; best = lead; }
+    }
+    if (best && bestScore > -150) return best;
+    const g = this.goalCenter(MCS.otherTeam(p.team));
+    return { x: g.x, y: H / 2 + (b.y < H / 2 ? 1 : -1) * this.goalHalfWidth() * 0.7 };
   }
 
   registerTouch(p, isKick) {
     const now = this.tick;
     if (!this.lastTouch || this.lastTouch.slot !== p.id) {
       p.stats.touches++;
+      this.addMeter(p, 0.04);
+      this.trackPass(p);
       this.prevTouch = this.lastTouch;
       this.lastTouch = { slot: p.id, team: p.team, tick: now, since: now };
     } else {
@@ -322,6 +521,114 @@ class Match {
       this.lastTouch.kick = true;
       this.lastKick = { slot: p.id, team: p.team, tick: now, prev: this.prevTouch };
     }
+  }
+
+  /** Completed passes build a combo; any opponent touch breaks it. */
+  trackPass(p) {
+    const other = this.combo[MCS.otherTeam(p.team)];
+    if (other.chain > 0 || other.ready) {
+      if (other.ready || other.chain >= 2) this.emit({ type: 'comboBroken', team: MCS.otherTeam(p.team) });
+      other.chain = 0; other.ready = false;
+    }
+    const k = this.lastKick;
+    if (!k || k.passCounted || k.team !== p.team || k.slot === p.id || this.tick - k.tick > PASS_WINDOW * MCS.TICK_RATE) return;
+    k.passCounted = true;
+    const c = this.combo[p.team];
+    if (c.ready) return;          // already powered up; shoot!
+    c.chain++;
+    this.addMeter(p, 0.1);
+    const passer = this.player(k.slot); if (passer) this.addMeter(passer, 0.08);
+    if (c.chain >= COMBO_PASSES) c.ready = true;
+    this.emit({ type: 'pass', team: p.team, slot: p.id, from: k.slot, chain: c.chain, ready: c.ready });
+  }
+
+  // ---- Signature moves ---------------------------------------------------------
+  addMeter(p, amount) { if (this.rules.specials && !p.armed) p.meter = Math.min(1, p.meter + amount); }
+
+  activateSpecial(p) {
+    if (!this.rules.specials || p.meter < 1 || p.armed || p.effects.stun || p.effects.frozen) return false;
+    if (this.state !== 'play' && this.state !== 'kickoff') return false;
+    const sp = Teams.specialFor(this.sides[p.team]);
+    p.meter = 0;
+    const b = this.ball;
+    switch (sp.kind) {
+      case 'banana': case 'thunder': case 'laser':
+        p.armed = sp.kind; p.effects.armed = ARMED_SECONDS; break;
+      case 'tackle': {
+        let dx = (p.input.right ? 1 : 0) - (p.input.left ? 1 : 0), dy = (p.input.down ? 1 : 0) - (p.input.up ? 1 : 0);
+        if (!dx && !dy) { dx = b.x - p.x; dy = b.y - p.y; }
+        const l = len(dx, dy) || 1;
+        p.vx = dx / l * 820; p.vy = dy / l * 820;
+        p.dashTime = 0.42; p.effects.slide = 0.42;
+        break;
+      }
+      case 'sprint':
+        p.effects.speed = 3; p.effects.sticky = 3; break;
+      case 'shockwave': {
+        const R = 230;
+        for (const o of this.players) {
+          if (o.team === p.team) continue;
+          const dx = o.x - p.x, dy = o.y - p.y, d = len(dx, dy) || 1;
+          if (d > R) continue;
+          const f = 720 * (1 - d / R) + 160;
+          o.vx += dx / d * f; o.vy += dy / d * f;
+          if (!o.effects.shield) o.effects.stun = 0.45;
+        }
+        const bx = b.x - p.x, by = b.y - p.y, bd = len(bx, by) || 1;
+        if (bd < R) { const f = 650 * (1 - bd / R) + 220; b.vx += bx / bd * f; b.vy += by / bd * f; b.owner = p.team; }
+        break;
+      }
+    }
+    this.emit({ type: 'special', slot: p.id, team: p.team, kind: sp.kind, name: sp.name, x: p.x, y: p.y });
+    return true;
+  }
+
+  // ---- Chaos events & wind -------------------------------------------------------
+  updateChaos(dt) {
+    const r = this.rules;
+    if (!r.chaosEvents) { this.chaos = null; return; }
+    if (this.chaos) {
+      this.chaos.t -= dt;
+      if (this.chaos.t <= 0) { this.emit({ type: 'chaosEnd', kind: this.chaos.kind }); this.chaos = null; this.chaosTimer = r.chaosEvery; }
+      return;
+    }
+    if (this.state !== 'play') return;
+    this.chaosTimer -= dt;
+    if (this.chaosTimer <= 0) this.startChaos();
+  }
+
+  startChaos(kind) {
+    const r = this.rules;
+    let pool = CHAOS_IDS.filter(k => k !== this.lastChaos);
+    if (!r.boostsEnabled || !r.enabledBoosts.length) pool = pool.filter(k => k !== 'pickupRain');
+    kind = kind || pool[Math.floor(Math.random() * pool.length)];
+    const def = CHAOS[kind];
+    this.chaos = { kind, t: def.duration };
+    this.lastChaos = kind;
+    if (kind === 'frenzy') for (const p of this.players) p.effects.speed = def.duration;
+    if (kind === 'pickupRain' && r.enabledBoosts.length) {
+      for (let i = 0; i < 4; i++) {
+        const type = r.enabledBoosts[Math.floor(Math.random() * r.enabledBoosts.length)];
+        const pk = { id: this.nextPickupId++, type, x: rnd(W * 0.12, W * 0.88), y: rnd(H * 0.12, H * 0.88), ttl: 12 };
+        this.pickups.push(pk);
+        this.emit({ type: 'spawn', boost: type, x: pk.x, y: pk.y });
+      }
+    }
+    this.emit({ type: 'chaos', kind, duration: def.duration });
+  }
+
+  updateWind(dt) {
+    const w = this.wind;
+    if (this.rules.arena !== 'wind') { w.x = 0; w.y = 0; return; }
+    w.timer -= dt;
+    if (w.timer <= 0) {
+      const a = Math.random() * Math.PI * 2, f = rnd(70, 190);
+      w.tx = Math.cos(a) * f; w.ty = Math.sin(a) * f * 0.7;
+      w.timer = rnd(6, 10);
+      this.emit({ type: 'wind', x: Math.round(w.tx), y: Math.round(w.ty) });
+    }
+    const k = Math.min(1, dt * 0.8);
+    w.x += (w.tx - w.x) * k; w.y += (w.ty - w.y) * k;
   }
 
   applyMagnets(dt) {
@@ -397,7 +704,7 @@ class Match {
         if (obj[k] <= 0) delete obj[k];
       }
     };
-    for (const p of this.players) decay(p.effects);
+    for (const p of this.players) { decay(p.effects); if (p.armed && !p.effects.armed) p.armed = null; }
     decay(this.ball.effects);
   }
 
@@ -410,7 +717,9 @@ class Match {
     if (b.x < 0) scoring = 'blue';          // crossed red's goal line
     else if (b.x > W) scoring = 'red';
     if (!scoring) return;
-    this.score[scoring]++;
+    const points = this.chaos && this.chaos.kind === 'doublePoints' ? 2 : 1;
+    this.score[scoring] += points;
+    const comboGoal = !!b.effects.fire, specialGoal = b.effects.thunder ? 'thunder' : b.effects.laser ? 'laser' : null;
     const conceded = MCS.otherTeam(scoring);
 
     let scorer = null, assist = null, ownGoal = false;
@@ -442,9 +751,15 @@ class Match {
       type: 'goal', team: scoring, scorer: scorer ? scorer.id : null, scorerName: scorer ? scorer.name : null,
       assist: assist ? assist.id : null, ownGoal, score: Object.assign({}, this.score), x: b.x, y: b.y,
       speed: Math.round(shotSpeed), clock: Math.round(this.time), sd: this.suddenDeath,
+      points, combo: comboGoal, special: specialGoal,
     });
     this.lastTouch = null; this.prevTouch = null; this.lastKick = null;
     this.kickoffTeam = conceded;
+    if (comboGoal && scorer && !ownGoal) scorer.stats.comboGoals = (scorer.stats.comboGoals || 0) + 1;
+    // Bots react: a team-mate cheers, a culprit apologises.
+    const mates = this.players.filter(p => p.isBot && p.team === scoring && p !== scorer);
+    if (mates.length && Math.random() < 0.7) this.emit({ type: 'emote', slot: mates[Math.floor(Math.random() * mates.length)].id, id: Math.random() < 0.5 ? 'nice' : 'wow' });
+    if (ownGoal && scorer && scorer.isBot) this.emit({ type: 'emote', slot: scorer.id, id: 'sorry' });
 
     const r = this.rules;
     const diff = Math.abs(this.score.red - this.score.blue);
@@ -468,6 +783,12 @@ class Match {
     return f;
   }
 
+  ballFlags() {
+    let f = 0;
+    for (const k of Object.keys(this.ball.effects)) f |= BALL_FLAGS[k] || 0;
+    return f;
+  }
+
   snapshot() {
     const snap = {
       t: this.tick,
@@ -484,8 +805,18 @@ class Match {
         dash: p.dashCooldown > 0 ? Math.round(p.dashCooldown / FEEL.dashCooldown * 100) / 100 : 0,
         dc: Math.round(p.dashCooldown * 100) / 100, dtm: Math.round(p.dashTime * 1000) / 1000,
         kf: p.kickFlash > 0 ? 1 : 0, bot: p.isBot ? 1 : 0, name: p.name,
+        m: Math.round(p.meter * 100) / 100, sp: p.armed || 0,
+        ch: p.chargeT > FEEL.chargeStart ? Math.round(Math.min(1, (p.chargeT - FEEL.chargeStart) / (FEEL.chargeFull - FEEL.chargeStart)) * 100) / 100 : 0,
       })),
-      ball: { x: Math.round(this.ball.x * 10) / 10, y: Math.round(this.ball.y * 10) / 10, vx: Math.round(this.ball.vx), vy: Math.round(this.ball.vy), r: this.ball.r, giant: this.ball.effects.giant ? 1 : 0 },
+      ball: {
+        x: Math.round(this.ball.x * 10) / 10, y: Math.round(this.ball.y * 10) / 10, vx: Math.round(this.ball.vx), vy: Math.round(this.ball.vy), r: this.ball.r,
+        z: Math.round(this.ball.z * 10) / 10, vz: Math.round(this.ball.vz), spin: Math.round(this.ball.spin * 100) / 100,
+        giant: this.ball.effects.giant ? 1 : 0, bf: this.ballFlags(),
+      },
+      gw: Math.round(this.goalHalfWidth() * 2),
+      chaos: this.chaos ? { k: this.chaos.kind, t: Math.round(this.chaos.t * 10) / 10 } : null,
+      wind: this.wind.x || this.wind.y ? [Math.round(this.wind.x), Math.round(this.wind.y)] : null,
+      cb: [this.combo.red.chain, this.combo.blue.chain, this.combo.red.ready ? 1 : 0, this.combo.blue.ready ? 1 : 0],
       pickups: this.pickups.map(pk => ({ id: pk.id, x: Math.round(pk.x), y: Math.round(pk.y), type: pk.type, ttl: Math.round(pk.ttl) })),
       events: this.events,
     };
@@ -494,10 +825,11 @@ class Match {
   }
 
   stats() {
-    return this.players.map(p => ({ id: p.id, name: p.name, team: p.team, pos: p.pos, bot: p.isBot, stats: p.stats }));
+    return this.players.map(p => ({ id: p.id, name: p.name, team: p.team, pos: p.pos, bot: p.isBot, stats: p.stats, look: p.look || null }));
   }
 }
 
 Match.FEEL = FEEL;
 Match.EFFECT_FLAGS = EFFECT_FLAGS;
+Match.BALL_FLAGS = BALL_FLAGS;
 module.exports = Match;

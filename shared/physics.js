@@ -13,6 +13,7 @@
 })(typeof self !== 'undefined' ? self : this, function (MCS) {
   'use strict';
   const { FIELD, PLAYER_RADIUS } = MCS;
+  // (ARENAS lives in rules.js so the rules editor can list them.)
   const W = FIELD.width, H = FIELD.height;
 
   // Feel constants (not player-facing rules).
@@ -40,7 +41,64 @@
     magnetForce: 900,
     kickoffTimeout: 6,       // seconds before a stalled kickoff opens play to all
     suddenDeathCap: 90,      // seconds of sudden death before the match is a draw
+    // Charged kicks, curve and lobs (T-27)
+    chargeStart: 0.12,       // holding kick longer than this starts charging
+    chargeFull: 0.75,        // seconds of holding for a full charge
+    chargeBonus: 0.42,       // a full charge adds this much power
+    curveMax: 2.4,           // rad/s the ball's heading turns at full spin
+    spinDecay: 0.975,        // per 1/60 s
+    lobPower: 0.62,          // horizontal power of a lob relative to a kick
+    lobLift: 340,            // upward speed of a lob (units/s), more with charge
+    gravity: 900,
+    crossbar: 42,            // a ball higher than this goes over the goal
+    headHeight: 18,          // outfield players can't touch a ball above this
+    keeperReach: 36,         // keepers can claw a ball down below this
+    // Bumpers arena
+    bumperRadius: 26,
+    bumperOrbit: 120,
+    bumperPeriod: 12,        // seconds per orbit
+    bumperKick: 1.25,        // ball leaves a bumper faster than it arrived
   };
+
+  /** Arena feel multipliers for the current rules. */
+  function arenaOf(rules) { return (MCS.ARENAS && MCS.ARENAS[rules && rules.arena]) || MCS.ARENAS.classic; }
+  /** Effective per-1/60 s ball drag on the ground for these rules. */
+  function ballDragFor(rules) { return Math.min(0.9995, Math.max(0.9, rules.ballDrag + arenaOf(rules).ballDrag)); }
+
+  /**
+   * Bumper positions at a given server tick (Pinball arena only). Two orbit
+   * a point in each half, in opposite phase, so they never block kickoff.
+   */
+  function bumpersAt(rules, tick) {
+    if (!rules || rules.arena !== 'bumpers') return [];
+    const t = (tick || 0) / MCS.TICK_RATE;
+    const a = (t / FEEL.bumperPeriod) * Math.PI * 2;
+    const R = FEEL.bumperOrbit;
+    const out = [];
+    for (const [cx, sgn] of [[W * 0.3, 1], [W * 0.7, -1]]) {
+      for (const off of [0, Math.PI]) {
+        out.push({ x: cx + Math.cos(a * sgn + off) * R, y: H / 2 + Math.sin(a * sgn + off) * R * 1.4, r: FEEL.bumperRadius });
+      }
+    }
+    return out;
+  }
+
+  /** Circle body vs bumpers; returns the bumper hit (or null). */
+  function collideBumpers(b, rules, tick, bounce) {
+    const list = bumpersAt(rules, tick);
+    let hit = null;
+    for (const bp of list) {
+      const dx = b.x - bp.x, dy = b.y - bp.y, d = Math.hypot(dx, dy);
+      const minD = (b.r || PLAYER_RADIUS) + bp.r;
+      if (d < minD && d > 0) {
+        const nx = dx / d, ny = dy / d;
+        b.x = bp.x + nx * minD; b.y = bp.y + ny * minD;
+        const vn = b.vx * nx + b.vy * ny;
+        if (vn < 0) { b.vx -= (1 + bounce) * vn * nx; b.vy -= (1 + bounce) * vn * ny; hit = bp; }
+      }
+    }
+    return hit;
+  }
 
   function len(x, y) { return Math.hypot(x, y); }
 
@@ -75,11 +133,12 @@
       if (input.down) dy += 1;
     }
     const moving = dx !== 0 || dy !== 0;
-    const mul = speedMul(rules, st, traits);
+    const arena = arenaOf(rules);
+    const mul = speedMul(rules, st, traits) * arena.speed;
     if (moving) {
       const l = len(dx, dy); dx /= l; dy /= l;
-      p.vx += dx * FEEL.playerAccel * mul * dt;
-      p.vy += dy * FEEL.playerAccel * mul * dt;
+      p.vx += dx * FEEL.playerAccel * arena.accel * mul * dt;
+      p.vy += dy * FEEL.playerAccel * arena.accel * mul * dt;
     }
 
     let dashed = false;
@@ -95,7 +154,7 @@
       }
     }
 
-    const damp = Math.pow(moving ? FEEL.playerMoveDamping : FEEL.playerDamping, dt * 60);
+    const damp = Math.pow(moving ? (arena.moveDamp || FEEL.playerMoveDamping) : (arena.idleDamp || FEEL.playerDamping), dt * 60);
     p.vx *= damp; p.vy *= damp;
     if (st.frozen) { p.vx *= 0.8; p.vy *= 0.8; }
     const max = FEEL.playerMaxSpeed * mul * (p.dashTime > 0 ? 3 : 1);
@@ -185,12 +244,16 @@
     }
   }
 
-  /** Full per-tick confinement for a player (arena, kickoff rules, posts). */
-  function confinePlayer(p, team, state, kickoffTeam, goalHalfWidth) {
+  /**
+   * Full per-tick confinement for a player (arena, kickoff rules, posts,
+   * bumpers). `rules` and `tick` are only needed for the Pinball arena.
+   */
+  function confinePlayer(p, team, state, kickoffTeam, goalHalfWidth, rules, tick) {
     confineToArena(p, p.r, FEEL.wallPlayerBounce, false, goalHalfWidth);
     if (state === 'kickoff') kickoffConfine(p, team, kickoffTeam);
     collidePosts(p, 0.3, goalHalfWidth);
+    if (rules && rules.arena === 'bumpers') collideBumpers(p, rules, tick, 0.5);
   }
 
-  return { FEEL, speedMul, radiusFor, integratePlayer, confineToArena, collidePosts, kickoffConfine, confinePlayer };
+  return { FEEL, arenaOf, ballDragFor, bumpersAt, collideBumpers, speedMul, radiusFor, integratePlayer, confineToArena, collidePosts, kickoffConfine, confinePlayer };
 });

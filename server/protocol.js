@@ -23,6 +23,9 @@ const C2S = {
   REMATCH: 'rematch',        // {}             (host only)
   INPUT: 'input',            // { up, down, left, right, kick, dash, aimX, aimY }
   CHAT: 'chat',              // { text }
+  EMOTE: 'emote',            // { id }  quick shout, seated players only
+  SET_LOOK: 'setLook',       // { look } cosmetics from the player card
+  SET_MODE: 'setMode',       // { mode } 'match' | 'tournament' (host only)
   PING: 'ping',              // { t }
 };
 
@@ -35,6 +38,9 @@ const S2C = {
   MATCH_END: 'matchEnd',     // { winner, score, stats }
   ERROR: 'error',            // { code, message }
   CHAT: 'chat',              // { from, text, team? }
+  EMOTE: 'emote',            // { slot, id }
+  PROFILE: 'profile',        // { profile } your player card
+  XP: 'matchXp',             // { gained, breakdown, before, after, unlocks }
   PONG: 'pong',              // { t }
 };
 

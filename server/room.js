@@ -265,6 +265,15 @@ class Room {
     this.chatLog.push(msg); if (this.chatLog.length > 50) this.chatLog.shift();
     this.broadcast(msg);
   }
+  /** Quick shout from a seated player, shown as a bubble over their head. */
+  emote(client, id) {
+    const p = this.players.get(client.id);
+    if (!p || !p.slot || this.status !== 'playing' || !MCS.EMOTES.some(e => e.id === id)) return;
+    const now = Date.now();
+    if (now - (p.lastEmote || 0) < 600) return;
+    p.lastEmote = now;
+    this.broadcast({ type: S2C.EMOTE, slot: p.slot, id });
+  }
   systemChat(text) { this.broadcast({ type: S2C.CHAT, from: null, text, system: true, t: Date.now() }); }
 
   // ---- Serialisation -----------------------------------------------------

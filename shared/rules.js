@@ -49,7 +49,47 @@
     maxPickups:      { label: 'Max pickups on pitch',    kind: 'number', def: 2,     min: 1,   max: 5,   step: 1 },
     kickoffPause:    { label: 'Pause after goal (s)',    kind: 'number', def: 2.5,   min: 0.5, max: 5,   step: 0.5 },
     botSkill:        { label: 'Bot skill ×',             kind: 'number', def: 1.0,   min: 0.5, max: 1.5, step: 0.1 },
+    arena:           { label: 'Arena',                   kind: 'enum',   def: 'classic', options: ['classic', 'ice', 'mud', 'wind', 'bumpers'] },
+    specials:        { label: 'Signature moves',         kind: 'bool',   def: true },
+    chaosEvents:     { label: 'Chaos events',            kind: 'bool',   def: true },
+    chaosEvery:      { label: 'Chaos event every (s)',   kind: 'number', def: 35,    min: 15,  max: 120, step: 5 },
   };
+
+  // ---- Arenas ---------------------------------------------------------------
+  // Feel multipliers applied by shared/physics.js (players, so the client can
+  // predict them) and server/game/match.js (ball, wind).
+  const ARENAS = {
+    classic: { label: 'Classic',  icon: '🏟️', desc: 'Fresh grass, no surprises.',
+      accel: 1, speed: 1, moveDamp: null, idleDamp: null, ballDrag: 0, ballBounce: 1 },
+    ice:     { label: 'Ice rink', icon: '🧊', desc: 'Players slide and the ball barely slows down.',
+      accel: 0.5, speed: 1.08, moveDamp: 0.993, idleDamp: 0.985, ballDrag: 0.005, ballBounce: 1.05 },
+    mud:     { label: 'Mud bath', icon: '🟫', desc: 'Heavy legs, heavy ball, dead bounces.',
+      accel: 0.85, speed: 0.82, moveDamp: 0.94, idleDamp: 0.84, ballDrag: -0.01, ballBounce: 0.65 },
+    wind:    { label: 'Windy',    icon: '🌬️', desc: 'Gusts change direction and push the ball around. Lobs drift the most.',
+      accel: 1, speed: 1, moveDamp: null, idleDamp: null, ballDrag: 0, ballBounce: 1 },
+    bumpers: { label: 'Pinball',  icon: '🔵', desc: 'Four orbiting bumpers fire the ball off at speed.',
+      accel: 1, speed: 1, moveDamp: null, idleDamp: null, ballDrag: 0, ballBounce: 1 },
+  };
+
+  // ---- Chaos events -----------------------------------------------------------
+  const CHAOS = {
+    tinyGoals:    { label: 'Tiny Goals',     icon: '🥅', duration: 15, desc: 'Both goals shrink' },
+    doublePoints: { label: 'Golden Window',  icon: '✨', duration: 15, desc: 'Goals count double' },
+    bouncyBall:   { label: 'Bouncy Castle',  icon: '🏀', duration: 12, desc: 'The ball goes super bouncy' },
+    frenzy:       { label: 'Frenzy',         icon: '🔥', duration: 8,  desc: 'Everyone is fast' },
+    pickupRain:   { label: 'Pickup Rain',    icon: '🎁', duration: 3,  desc: 'Boosts rain onto the pitch' },
+  };
+  const CHAOS_IDS = Object.keys(CHAOS);
+
+  // ---- Quick emotes -----------------------------------------------------------
+  const EMOTES = [
+    { id: 'pass',  text: 'Pass!',  key: '1' },
+    { id: 'shoot', text: 'Shoot!', key: '2' },
+    { id: 'back',  text: 'Back!',  key: '3' },
+    { id: 'nice',  text: 'Nice!',  key: '4' },
+    { id: 'sorry', text: 'Sorry!', key: '5' },
+    { id: 'wow',   text: 'Wow!',   key: '6' },
+  ];
 
   // ---- Boost catalogue ------------------------------------------------------
   const BOOSTS = {
@@ -80,6 +120,7 @@
       const s = RULE_SCHEMA[k];
       let v = input[k];
       if (s.kind === 'bool') { out[k] = !!v; continue; }
+      if (s.kind === 'enum') { if (s.options.includes(v)) out[k] = v; continue; }
       v = Number(v);
       if (!Number.isFinite(v)) continue;
       v = Math.min(s.max, Math.max(s.min, v));
@@ -113,6 +154,7 @@
   return {
     FIELD, PLAYER_RADIUS, BALL_RADIUS, TEAMS, POSITIONS, TEAM_SIZE,
     TICK_RATE, SNAPSHOT_RATE, RULE_SCHEMA, BOOSTS, BOOST_IDS, FORMATION,
+    ARENAS, CHAOS, CHAOS_IDS, EMOTES,
     defaultRules, sanitizeRules, slotId, parseSlot, otherTeam,
   };
 });

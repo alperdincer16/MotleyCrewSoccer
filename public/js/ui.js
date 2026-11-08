@@ -42,6 +42,15 @@
         const cb = el('input'); cb.type = 'checkbox'; cb.checked = !!rules[key]; cb.disabled = !editable;
         cb.onchange = () => onChange({ [key]: cb.checked });
         row.appendChild(cb);
+      } else if (s.kind === 'enum') {
+        const label = (v) => key === 'arena' && MCS.ARENAS[v] ? `${MCS.ARENAS[v].icon} ${MCS.ARENAS[v].label}` : v;
+        if (editable) {
+          const sel = el('select');
+          for (const v of s.options) { const o = el('option', null, label(v)); o.value = v; o.selected = v === rules[key]; sel.appendChild(o); }
+          sel.onchange = () => onChange({ [key]: sel.value });
+          row.appendChild(sel);
+        } else row.appendChild(el('span', 'val', label(rules[key])));
+        if (key === 'arena' && MCS.ARENAS[rules[key]]) row.title = MCS.ARENAS[rules[key]].desc;
       } else if (editable) {
         const inp = el('input'); inp.type = 'number'; inp.min = s.min; inp.max = s.max; inp.step = s.step; inp.value = rules[key];
         inp.onchange = () => onChange({ [key]: Number(inp.value) });
@@ -169,6 +178,8 @@
         const blurb = el('div', 'blurb');
         blurb.appendChild(el('b', null, nation.style));
         blurb.appendChild(document.createTextNode(' · ' + nation.desc));
+        const sp = Teams.specialFor(this.createSides[team]);
+        blurb.appendChild(el('div', 'team-special', `${sp.icon} ${sp.name}`));
         box.appendChild(blurb);
       }
     }
@@ -303,6 +314,11 @@
       traits.appendChild(el('span', t.kick >= 1 ? 'up' : 'down', `Kick ${pct(t.kick)}`));
       traits.appendChild(el('span', t.dash <= 1 ? 'up' : 'down', `Dash recharge ${pct(t.dash, true)}`));
       head.appendChild(traits);
+      const sp = Teams.specialFor(nationId);
+      const spl = el('div', 'team-special');
+      spl.appendChild(el('b', null, `${sp.icon} ${sp.name}`));
+      spl.appendChild(document.createTextNode(' · ' + sp.desc));
+      head.appendChild(spl);
     }
 
     addChat(msg) {

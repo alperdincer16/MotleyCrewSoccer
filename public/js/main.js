@@ -85,6 +85,7 @@
   });
 
   net.on('chat', (msg) => ui.addChat(msg));
+  net.on('emote', (msg) => { if (game.active) game.showEmote(msg.slot, msg.id); });
   net.on('error', (msg) => ui.error(msg.message || msg.code));
 
   $('btnRematch').onclick = () => net.send('rematch');

@@ -196,3 +196,31 @@ details .rules-grid { margin-top: 12px; }
   #topbar .me input { width: 100px; }
   .banner { font-size: 40px; }
 }
+
+/* ---- T-27..T-29: skill meter, combo pips, chaos/wind chips, emotes ---- */
+.score { position: relative; }
+#hud .score .combo { position: absolute; top: 50%; transform: translateY(-50%); background: rgba(10,12,16,.75); padding: 2px 8px; border-radius: 8px; font-size: 12px; font-weight: 700; letter-spacing: 2px; white-space: nowrap; color: var(--accent); text-shadow: 0 1px 2px #000; }
+#hud .score.red .combo { right: calc(100% + 26px); }
+#hud .score.blue .combo { left: calc(100% + 26px); }
+#hud .score .combo.ready { color: #ff9f1c; font-weight: 900; letter-spacing: 1px; animation: comboPulse .6s ease-in-out infinite alternate; }
+@keyframes comboPulse { from { opacity: .6; } to { opacity: 1; } }
+#hudChips { position: absolute; top: 70px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; pointer-events: none; }
+.chip { background: rgba(0,0,0,.65); border: 1px solid rgba(255,209,102,.5); color: #ffd166; padding: 3px 10px; border-radius: 999px; font-size: 13px; font-weight: 700; white-space: nowrap; }
+#skillMeter { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,.6); padding: 6px 12px; border-radius: 12px; border: 1px solid var(--line); font-size: 13px; font-weight: 700; pointer-events: none; }
+#skillMeter .bar { width: 120px; height: 8px; background: rgba(255,255,255,.12); border-radius: 4px; overflow: hidden; }
+#skillFill { height: 100%; width: 0; background: linear-gradient(90deg, #ffd166, #ff9f1c); transition: width .15s; }
+#skillMeter.full { border-color: #ffd166; box-shadow: 0 0 14px rgba(255,209,102,.6); animation: glow .7s ease-in-out infinite alternate; }
+#skillMeter.armed { border-color: #4cc9f0; box-shadow: 0 0 14px rgba(76,201,240,.6); }
+#skillMeter.armed #skillFill { background: #4cc9f0; }
+@keyframes glow { from { box-shadow: 0 0 6px rgba(255,209,102,.35); } to { box-shadow: 0 0 18px rgba(255,209,102,.85); } }
+#mobileControls .mbtns { display: grid; grid-template-columns: repeat(2, auto); gap: 10px; align-items: center; justify-items: center; }
+.mbtns #mLob, .mbtns #mSkill { width: 64px; height: 64px; font-size: 13px; }
+.mbtns #mLob { background: rgba(6,214,160,.85); }
+.mbtns #mSkill { background: rgba(255,159,28,.9); }
+.mbtns #mEmote { width: 48px; height: 48px; background: rgba(255,255,255,.85); grid-column: 1 / -1; }
+#emoteWheel { position: absolute; right: 16px; bottom: 190px; display: grid; grid-template-columns: repeat(2, auto); gap: 6px; pointer-events: auto; }
+#emoteWheel button { background: #fff; color: #111; font-weight: 700; }
+.rule select { background: var(--bg2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 4px 8px; }
+.team-special { font-size: 13px; color: var(--muted); margin-top: 4px; }
+.team-special b { color: var(--accent); }
+#hud .score .combo:empty { display: none; }

@@ -10,6 +10,7 @@
 
 const MCS = require('../../shared/rules');
 const Teams = require('../../shared/teams');
+const Physics = require('../../shared/physics');
 const { FIELD, BALL_RADIUS } = MCS;
 const W = FIELD.width;
 const H = FIELD.height;
@@ -34,13 +35,52 @@ class BotBrain {
   /** Predict where the ball will be after t seconds (ignores walls). */
   predictBall(match, t) {
     const b = match.ball;
-    const drag = Math.pow(match.rules.ballDrag, 60 * t);
+    const d0 = Physics.ballDragFor(match.rules);
+    const drag = Math.pow(d0, 60 * t);
     // integral of v*drag^s ds approximated
-    const k = (1 - drag) / Math.max(1e-6, -Math.log(match.rules.ballDrag) * 60);
+    const k = (1 - drag) / Math.max(1e-6, -Math.log(d0) * 60);
     return { x: clamp(b.x + b.vx * k, 0, W), y: clamp(b.y + b.vy * k, 0, H) };
   }
 
   think(match, me) {
+    this.plan(match, me);
+    this.wantSkill = this.decideSkill(match, me);
+  }
+
+  /**
+   * Use the nation's signature move when the meter is full and the moment
+   * suits it. Bots hesitate a little (skill-scaled) so they don't fire it the
+   * instant it charges.
+   */
+  decideSkill(match, me) {
+    if (!match.rules.specials || me.meter < 1 || me.armed) return false;
+    if (Math.random() > 0.35 * this.difficulty) return false;
+    const b = match.ball;
+    const kind = Teams.specialFor(match.sides[me.team]).kind;
+    const myDist = len(b.x - me.x, b.y - me.y);
+    const oppGoal = match.goalCenter(MCS.otherTeam(me.team));
+    const goalDist = len(oppGoal.x - b.x, oppGoal.y - b.y);
+    const opps = match.players.filter(p => p.team !== me.team);
+    const oppNearBall = opps.some(o => len(o.x - b.x, o.y - b.y) < 70);
+    const oppCloser = opps.some(o => len(o.x - b.x, o.y - b.y) < myDist);
+    switch (kind) {
+      case 'banana': case 'thunder':
+        return this.lastPlan === 'fwd-attack' && myDist < 140 && goalDist < 620;
+      case 'laser':
+        return (this.lastPlan === 'fwd-pass' || this.lastPlan === 'def-pass') && myDist < 110;
+      case 'tackle':
+        return me.pos !== 'GK' && oppNearBall && oppCloser && myDist < 170 && myDist > 40;
+      case 'sprint':
+        return myDist < 45 && !oppCloser && goalDist > 280 && me.pos !== 'GK';
+      case 'shockwave': {
+        const near = opps.filter(o => len(o.x - me.x, o.y - me.y) < 170).length;
+        return near >= 2 || (me.pos === 'GK' && oppNearBall && myDist < 140);
+      }
+    }
+    return false;
+  }
+
+  plan(match, me) {
     const b = match.ball;
     const dir = match.attackDir(me.team);
     const ownGoal = match.goalCenter(me.team);
@@ -59,6 +99,7 @@ class BotBrain {
 
     this.wantKick = false;
     this.wantDash = false;
+    this.wantSkill = false;
     this.aim = null;
 
     // Pickups: grab one if it is close and the ball is not urgent.
@@ -336,6 +377,7 @@ class BotBrain {
     }
     input.kick = this.wantKick && this.kickSafeNow(match, me);
     input.dash = this.wantDash && match.rules.dashEnabled;
+    input.skill = !!this.wantSkill && match.tick % 2 === 0;   // a fresh press every other tick
     if (this.aim) { input.aimX = this.aim.x; input.aimY = this.aim.y; }
     return input;
   }
