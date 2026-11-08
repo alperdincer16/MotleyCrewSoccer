@@ -479,9 +479,28 @@
       let title = res.winner === 'draw' ? 'Draw' : `${this.nationName(res.winner)} wins`;
       if (myTeam) title = res.winner === 'draw' ? 'Draw' : res.winner === myTeam ? 'Victory!' : 'Defeat';
       this.el.resultsTitle.textContent = title + (res.suddenDeath ? ' (sudden death)' : '');
+      // Tournament: progress line and, for the final, the trophy.
+      const tl = document.getElementById('tourLine'), trophy = document.getElementById('trophy');
+      tl.classList.add('hidden'); trophy.classList.add('hidden');
+      if (res.tournament) {
+        const tr = res.tournament, home = this.nationName('red');
+        const pens = tr.pens ? ` ${tr.pens[0]}–${tr.pens[1]} on penalties.` : '';
+        const next = { 'Quarter-final': 'semi-final', 'Semi-final': 'final' }[tr.roundName];
+        tl.textContent = tr.won ? (next ? `${home} are through to the ${next}!${pens}` : `${home} win the tournament!${pens}`) : `${home} are knocked out in the ${tr.roundName.toLowerCase()}.${pens}`;
+        tl.className = 'tour-line ' + (tr.won ? 'won' : 'lost');
+        if (tr.won && tr.roundName === 'Final') {
+          trophy.classList.remove('hidden');
+          document.getElementById('trophyText').textContent = `${home} are champions!`;
+          this.renderer.confetti(FIELD.width / 2, FIELD.height / 2, this.teamColors.red);
+          this.audio.cheer(1); this.audio.levelUp();
+        }
+        this.el.btnRematch.textContent = tr.won && next ? 'Next round' : 'Back to the room';
+      } else this.el.btnRematch.textContent = 'Rematch';
       this.el.resRed.textContent = res.score.red; this.el.resBlue.textContent = res.score.blue;
       const tb = this.el.statsBody; tb.innerHTML = '';
-      const best = res.stats.reduce((a, s) => (s.stats.goals * 3 + s.stats.assists * 2 + s.stats.kicks * 0.1 > (a ? a.stats.goals * 3 + a.stats.assists * 2 + a.stats.kicks * 0.1 : -1) ? s : a), null);
+      const rating = (x) => Progress.matchRating(x.stats);
+      let best = res.stats.reduce((a, x) => (!a || rating(x) > rating(a) ? x : a), null);
+      if (best && rating(best) <= 0) best = null;
       for (const s of res.stats) {
         const tr = document.createElement('tr');
         const name = document.createElement('td'); name.className = s.team;

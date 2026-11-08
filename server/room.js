@@ -13,6 +13,7 @@ const Match = require('./game/match');
 const { BotBrain } = require('./game/ai');
 const { S2C } = require('./protocol');
 const Progress = require('../shared/progress');
+const { Tournament } = require('./tournament');
 
 const TICK_DT = 1 / MCS.TICK_RATE;
 const SNAP_EVERY = Math.round(MCS.TICK_RATE / MCS.SNAPSHOT_RATE);
@@ -28,7 +29,7 @@ function randomCode(n = 6) {
 }
 
 class Room {
-  constructor(lobby, host, { name, password, rules, sides }) {
+  constructor(lobby, host, { name, password, rules, sides, mode }) {
     this.lobby = lobby;
     this.id = 'r' + (nextRoomId++);
     this.name = String(name || `${host.name}'s game`).slice(0, 32);
@@ -48,6 +49,42 @@ class Room {
     this.lastResult = null;
     this.chatLog = [];
     this.createdAt = Date.now();
+    this.mode = mode === 'tournament' ? 'tournament' : 'match';
+    this.tournament = null;
+  }
+
+  // ---- Tournament ----------------------------------------------------------
+  setMode(client, mode) {
+    if (!this.isHost(client)) return this.error(client, 'not_host', 'Only the host can change the mode');
+    if (this.status === 'playing') return this.error(client, 'in_progress', 'Wait for the match to finish');
+    if (mode !== 'match' && mode !== 'tournament') return;
+    if (this.tournament && !this.tournament.finished() && mode === 'match') this.systemChat('Tournament abandoned');
+    this.mode = mode;
+    this.tournament = null;
+    this.broadcastRoom();
+    this.lobby.broadcastLobby();
+  }
+  tournamentLocked() { return this.mode === 'tournament' && this.tournament && !this.tournament.finished(); }
+
+  /** After the live fixture: record it, give bonus XP, simulate the rest of the round. */
+  finishTournamentMatch() {
+    const t = this.tournament, m = this.match;
+    const roundName = t.roundName();
+    const res = t.recordLive(m.score, m.winner);
+    if (!res) return null;
+    const home = Teams.get(t.home).name;
+    const pens = res.pens ? ` (${res.pens[0]}–${res.pens[1]} on penalties)` : '';
+    const bonus = { 'Quarter-final': ['Reached the semi-final', 40], 'Semi-final': ['Reached the final', 70], 'Final': ['Tournament champion', 150] }[roundName];
+    this.xpExtra = (team) => (team === 'red' && res.won ? { tournament: { label: bonus[0], xp: bonus[1] }, trophy: roundName === 'Final' } : {});
+    this.systemChat(res.won ? `${home} win the ${roundName.toLowerCase()}${pens}!` : `${home} are knocked out in the ${roundName.toLowerCase()}${pens}`);
+    t.simulateRest(() => {
+      if (t.finished()) this.systemChat(t.status === 'champion' ? `🏆 ${home} are champions!` : `🏆 ${Teams.get(t.champion).name} win the tournament`);
+      else this.systemChat(`Next: ${home} vs ${Teams.get(t.nextSides().blue).name} in the ${t.roundName().toLowerCase()}`);
+      if (t.nextSides()) this.sides = t.nextSides();
+      this.broadcastRoom();
+      this.lobby.broadcastLobby();
+    });
+    return { won: res.won, pens: res.pens, roundName };
   }
 
   // ---- Membership --------------------------------------------------------
@@ -156,6 +193,7 @@ class Room {
     if (!this.isHost(client)) return this.error(client, 'not_host', 'Only the host can pick teams');
     if (this.status === 'playing') return this.error(client, 'in_progress', 'Teams lock while a match is running');
     if (!MCS.TEAMS.includes(side) || !Teams.get(nation)) return this.error(client, 'bad_team', 'Unknown team');
+    if (this.tournamentLocked()) return this.error(client, 'tournament', 'The bracket decides the teams until the tournament ends');
     const other = MCS.otherTeam(side);
     if (this.sides[other] === nation) this.sides[other] = this.sides[side]; // swap instead of duplicating
     this.sides[side] = nation;
@@ -195,12 +233,22 @@ class Room {
   startGame(client) {
     if (!this.isHost(client)) return this.error(client, 'not_host', 'Only the host can start');
     if (this.status === 'playing') return;
+    if (this.tournament && this.tournament.simulating) return this.error(client, 'busy', 'The other fixtures are still being played');
+    let rules = this.rules;
+    if (this.mode === 'tournament') {
+      if (!this.tournament || this.tournament.finished()) {
+        this.tournament = new Tournament(this.sides, this.rules);
+        this.systemChat(`🏆 Tournament started: ${this.tournament.nations.map(id => Teams.get(id).flag).join(' ')}`);
+      }
+      this.sides = this.tournament.nextSides();
+      rules = Object.assign({}, this.rules, { suddenDeath: true });   // knockout: someone has to win
+    }
     const roster = {};
     for (const [slot, pid] of Object.entries(this.slots)) {
       const p = pid ? this.players.get(pid) : null;
       roster[slot] = p ? { name: p.name, isBot: false, look: p.look } : { isBot: true };
     }
-    this.match = new Match(this.rules, roster, this.sides);
+    this.match = new Match(rules, roster, this.sides);
     this.brains = this.match.players.map(p => new BotBrain(p.id, p.pos === 'GK' ? 0.85 : 1)); // botSkill rule scales these at runtime
     this.status = 'playing';
     this.lastResult = null;
@@ -265,9 +313,11 @@ class Room {
   finishMatch() {
     this.stopLoop();
     this.status = 'ended';
-    this.lastResult = { winner: this.match.winner, score: Object.assign({}, this.match.score), stats: this.match.stats(), suddenDeath: this.match.suddenDeath, sides: this.sides };
+    this.xpExtra = null;
+    const tour = this.mode === 'tournament' && this.tournament ? this.finishTournamentMatch() : null;
+    this.lastResult = { winner: this.match.winner, score: Object.assign({}, this.match.score), stats: this.match.stats(), suddenDeath: this.match.suddenDeath, sides: this.sides, tournament: tour };
     this.broadcast(Object.assign({ type: S2C.MATCH_END }, this.lastResult));
-    this.awardXp();
+    this.awardXp(this.xpExtra);
     this.broadcastRoom();
     this.lobby.broadcastLobby();
   }
@@ -318,6 +368,7 @@ class Room {
       slotsTaken: Object.values(this.slots).filter(Boolean).length,
       slotsTotal: MCS.TEAMS.length * MCS.TEAM_SIZE,
       matchSeconds: this.rules.matchSeconds, createdAt: this.createdAt, sides: this.sides,
+      mode: this.mode, round: this.tournament ? this.tournament.roundName() : null, arena: this.rules.arena,
       score: this.match ? this.match.score : null,
       timeLeft: this.match ? Math.round(this.match.time) : null,
     };
@@ -328,6 +379,7 @@ class Room {
     return {
       id: this.id, name: this.name, inviteCode: this.inviteCode, locked: !!this.password,
       hostId: this.hostId, status: this.status, rules: this.rules, slots: this.slots, sides: this.sides,
+      mode: this.mode, tournament: this.tournament ? this.tournament.view() : null,
       players: [...this.players.values()].map(p => ({ id: p.id, name: p.name, slot: p.slot, ready: p.ready, connected: p.connected, look: p.look || null })),
     };
   }

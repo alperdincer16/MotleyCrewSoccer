@@ -110,7 +110,7 @@
       $('createForm').onsubmit = (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
-        this.net.send('createGame', { name: fd.get('name'), password: fd.get('password') || undefined, rules: this.createRules, sides: this.createSides });
+        this.net.send('createGame', { name: fd.get('name'), password: fd.get('password') || undefined, rules: this.createRules, sides: this.createSides, mode: fd.get('mode') || 'match' });
         $('createDialog').close();
       };
       $('createShuffle').onclick = () => { this.createSides = Teams.randomPair(); this.renderCreateSides(); };
@@ -194,6 +194,8 @@
         const title = el('div', 'title');
         const na = Teams.get(g.sides && g.sides.red), nb = Teams.get(g.sides && g.sides.blue);
         title.appendChild(el('span', null, (g.locked ? '🔒 ' : '') + g.name + (na && nb ? `  ${na.flag} v ${nb.flag}` : '')));
+        if (g.mode === 'tournament') title.appendChild(el('span', 'badge tour', `🏆 ${g.round || 'Tournament'}`));
+        if (g.arena && g.arena !== 'classic' && MCS.ARENAS[g.arena]) title.appendChild(el('span', 'badge', `${MCS.ARENAS[g.arena].icon} ${MCS.ARENAS[g.arena].label}`));
         const badge = el('span', 'badge ' + (g.status === 'playing' ? 'live' : g.status === 'ended' ? 'ended' : 'open'));
         badge.textContent = g.status === 'playing' ? 'Live' : g.status === 'ended' ? 'Full time' : 'Waiting';
         title.appendChild(badge);
@@ -235,7 +237,7 @@
 
       const { sides, kits } = applySides(room.sides);
       for (const team of MCS.TEAMS) {
-        this.renderTeamHeader(team, sides[team], host && room.status !== 'playing');
+        this.renderTeamHeader(team, sides[team], host && room.status !== 'playing' && !(room.mode === 'tournament' && room.tournament && room.tournament.round < 3));
         const box = $('slots-' + team); box.innerHTML = '';
         for (const pos of MCS.POSITIONS) {
           const sid = MCS.slotId(team, pos);
@@ -272,7 +274,13 @@
       $('btnReady').textContent = me && me.ready ? 'Not ready' : 'Ready';
       $('btnReady').disabled = !me || !me.slot;
       $('btnStart').classList.toggle('hidden', !host);
-      $('btnStart').textContent = room.status === 'ended' ? 'Rematch' : 'Start match';
+      const t = room.tournament;
+      const tourOver = t && t.round >= t.names.length;
+      if (room.mode === 'tournament') {
+        $('btnStart').textContent = room.status === 'ended' ? (tourOver ? 'Back to the room' : 'Next round') : !t || tourOver ? 'Start tournament' : `Play the ${t.roundName.toLowerCase()}`;
+        $('btnStart').disabled = !!(t && t.simulating);
+      } else { $('btnStart').textContent = room.status === 'ended' ? 'Rematch' : 'Start match'; $('btnStart').disabled = false; }
+      this.renderBracket(room, host);
       const humansSeated = room.players.filter(p => p.slot).length;
       const notReady = room.players.filter(p => p.slot && !p.ready).length;
       $('startHint').textContent = host
@@ -283,6 +291,59 @@
       $('rulesHint').textContent = host ? 'You can edit these' : 'Only the host can edit';
       renderRulesEditor($('roomRules'), room.rules, host && room.status !== 'playing', (patch) => this.net.send('updateRules', { rules: patch }));
       renderBoostToggles($('roomBoosts'), room.rules, host && room.status !== 'playing', (patch) => this.net.send('updateRules', { rules: patch }));
+    }
+
+    /** Mode switch and the knockout bracket. */
+    renderBracket(room, host) {
+      const card = $('bracketCard');
+      // Mode switch lives in the card header so the host can flip it before starting.
+      let sw = $('modeSwitch');
+      if (!sw) {
+        sw = el('select'); sw.id = 'modeSwitch';
+        for (const [v, l] of [['match', '⚽ Single match'], ['tournament', '🏆 Tournament']]) { const o = el('option', null, l); o.value = v; sw.appendChild(o); }
+        sw.onchange = () => this.net.send('setMode', { mode: sw.value });
+        $('roomSub').after(sw);
+      }
+      sw.value = room.mode || 'match';
+      sw.disabled = !host || room.status === 'playing';
+      sw.className = 'mode-switch';
+      card.classList.toggle('hidden', room.mode !== 'tournament');
+      if (room.mode !== 'tournament') return;
+      const t = room.tournament, box = $('bracket'); box.innerHTML = '';
+      const flag = (id) => (Teams.get(id) || {}).flag || '';
+      const name = (id) => (Teams.get(id) || {}).name || '?';
+      if (!t) {
+        $('bracketTitle').textContent = '🏆 Tournament';
+        $('bracketHint').textContent = `${name(room.sides.red)} (your nation, red) open against ${name(room.sides.blue)}. Six more nations are drawn when you start.`;
+        return;
+      }
+      const over = t.round >= t.names.length;
+      $('bracketTitle').textContent = over ? (t.status === 'champion' ? `🏆 ${name(t.home)} are champions!` : `🏆 ${name(t.champion)} won the tournament`) : `🏆 Tournament · ${t.roundName}`;
+      $('bracketHint').textContent = t.simulating ? 'Other fixtures are being played…' : over ? 'Start again for a fresh draw' : t.status === 'out' ? `${name(t.home)} are out` : `Your nation: ${flag(t.home)} ${name(t.home)}`;
+      t.names.forEach((rn, r) => {
+        const col = el('div', 'round' + (r === t.round ? ' current' : ''));
+        col.appendChild(el('h4', null, rn));
+        const fixtures = t.rounds[r].length ? t.rounds[r] : Array.from({ length: [4, 2, 1][r] }, () => null);
+        for (const f of fixtures) {
+          const fx = el('div', 'fixture' + (f && (f.a === t.home || f.b === t.home) ? ' home' : ''));
+          if (!f) { fx.appendChild(el('div', 'side tbd', 'TBD')); fx.appendChild(el('div', 'side tbd', 'TBD')); col.appendChild(fx); continue; }
+          for (const [i, id] of [[0, f.a], [1, f.b]]) {
+            const row = el('div', 'side' + (f.winner === id ? ' won' : f.winner ? ' lost' : ''));
+            row.appendChild(el('span', null, `${flag(id)} ${name(id)}`));
+            row.appendChild(el('b', null, f.score ? String(f.score[i]) + (f.pens ? ` (${f.pens[i]})` : '') : ''));
+            fx.appendChild(row);
+          }
+          if (!f.winner && (f.a === t.home || f.b === t.home) && t.status === 'running') fx.appendChild(el('div', 'next', 'Up next: you play this one'));
+          col.appendChild(fx);
+        }
+        box.appendChild(col);
+      });
+      if (over) {
+        const champ = el('div', 'round champ');
+        champ.appendChild(el('h4', null, 'Champion'));
+        champ.appendChild(el('div', 'cup-small', `🏆 ${flag(t.champion)} ${name(t.champion)}`));
+        box.appendChild(champ);
+      }
     }
 
     /** Country picker, style blurb and traits for one side of the pre-match board. */

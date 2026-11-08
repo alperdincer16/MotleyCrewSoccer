@@ -256,3 +256,31 @@ details .rules-grid { margin-top: 12px; }
 .xp-items { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 18px; font-size: 13px; color: var(--muted); }
 .xp-items div { display: flex; justify-content: space-between; }
 .xp-unlocks { font-size: 13px; color: var(--ok); }
+
+/* ---- T-32 tournament ---- */
+.mode-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.mode-opt { flex-direction: row; align-items: flex-start; gap: 8px; background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; padding: 10px; cursor: pointer; color: var(--text); }
+.mode-opt:has(input:checked) { border-color: var(--accent); background: rgba(255,209,102,.08); }
+.mode-opt span { display: flex; flex-direction: column; gap: 3px; }
+.mode-opt small { color: var(--muted); font-size: 12px; }
+.mode-switch { margin-top: 8px; background: var(--bg2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 5px 8px; }
+.badge.tour { background: rgba(255,209,102,.14); color: var(--accent); border-color: rgba(255,209,102,.4); }
+.bracket-card { margin: 16px 0; }
+.bracket { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 14px; align-items: center; }
+.bracket .round { display: flex; flex-direction: column; gap: 10px; justify-content: space-around; height: 100%; }
+.bracket .round h4 { margin: 0; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--muted); }
+.bracket .round.current h4 { color: var(--accent); }
+.fixture { background: var(--bg2); border: 1px solid var(--line); border-radius: 10px; padding: 6px 8px; font-size: 13px; }
+.fixture.home { border-color: var(--accent); }
+.fixture .side { display: flex; justify-content: space-between; gap: 8px; padding: 2px 0; }
+.fixture .side.won { font-weight: 800; }
+.fixture .side.lost { color: var(--muted); text-decoration: line-through; text-decoration-color: rgba(255,255,255,.25); }
+.fixture .side.tbd { color: var(--muted); }
+.fixture .next { font-size: 11px; color: var(--accent); margin-top: 2px; }
+.cup-small { font-size: 18px; font-weight: 800; }
+.trophy { text-align: center; margin-bottom: 6px; }
+.trophy .cup { font-size: 84px; line-height: 1; animation: cupBounce 1s ease-in-out infinite alternate; filter: drop-shadow(0 0 22px rgba(255,209,102,.65)); }
+.trophy #trophyText { font-size: 20px; font-weight: 900; color: var(--accent); margin-top: 6px; }
+@keyframes cupBounce { from { transform: translateY(0) rotate(-4deg); } to { transform: translateY(-8px) rotate(4deg); } }
+.tour-line { text-align: center; font-weight: 800; margin: 4px 0 8px; }
+.tour-line.won { color: var(--ok); } .tour-line.lost { color: var(--red); }

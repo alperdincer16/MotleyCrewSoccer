@@ -66,6 +66,10 @@
     <h2>Create a game</h2>
     <label>Game name <input name="name" maxlength="32" placeholder="Friday kickabout" required></label>
     <label>Password <span class="muted">(optional)</span> <input name="password" maxlength="64" placeholder="Leave blank for a public game"></label>
+    <div class="mode-pick" id="createMode">
+      <label class="mode-opt"><input type="radio" name="mode" value="match" checked><span><b>⚽ Single match</b><small>One game, rematch as often as you like.</small></span></label>
+      <label class="mode-opt"><input type="radio" name="mode" value="tournament"><span><b>🏆 Tournament</b><small>8-nation knockout. You play your nation's games; the rest are simulated.</small></span></label>
+    </div>
     <div class="create-teams">
       <div class="section-head"><h3>Teams</h3><button type="button" class="ghost small" id="createShuffle">Shuffle</button></div>
       <div class="create-sides">
@@ -142,6 +146,11 @@
     </div>
   </div>
 
+  <section id="bracketCard" class="card bracket-card hidden">
+    <div class="section-head"><h2 id="bracketTitle">🏆 Tournament</h2><span class="muted" id="bracketHint"></span></div>
+    <div id="bracket" class="bracket"></div>
+  </section>
+
   <div class="prematch-body">
     <section class="card">
       <div class="section-head"><h2>Players</h2><span class="muted" id="playerCount"></span></div>
@@ -204,7 +213,9 @@
     </div>
     <div id="results" class="hidden">
       <div class="results-card">
+        <div id="trophy" class="trophy hidden"><div class="cup">🏆</div><div id="trophyText"></div></div>
         <h1 id="resultsTitle">Full time</h1>
+        <div id="tourLine" class="tour-line hidden"></div>
         <div class="results-score"><span class="red" id="resRed">0</span> – <span class="blue" id="resBlue">0</span></div>
         <div id="xpPanel" class="xp-panel hidden"></div>
         <table id="statsTable"><thead><tr><th>Player</th><th>G</th><th>A</th><th>Kicks</th><th>Boosts</th></tr></thead><tbody></tbody></table>
