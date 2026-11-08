@@ -42,6 +42,10 @@ boosts. Any slot a human does not take is played by a bot.
 | Pickup spawn interval | 8 s | 3–30 s |
 | Bot skill | 1.0× | 0.5–1.5× |
 | Enabled boosts | all | per-boost toggles |
+| Arena | classic | classic / ice / mud / wind / pinball |
+| Signature moves | on | toggle |
+| Chaos events | on | toggle |
+| Chaos event every | 35 s | 15–120 s |
 
 ## Boosts (pickups)
 
@@ -175,3 +179,67 @@ The crowd is driven by a per-side excitement value:
 Audio follows the same excitement value: a looping pink-noise murmur whose
 level and brightness track the crowd, a roar on goals and at full time, an
 "ooh" on the post, and claps on each of the last ten seconds.
+
+## Shooting, signature moves and combos (T-27)
+
+* **Charge**: holding kick (or lob) before contact adds up to +42% power
+  over 0.75 s. A tap behaves exactly as before. Humans only.
+* **Curve**: the client measures how fast the mouse sweeps sideways relative
+  to the aim direction (or, without mouse movement, whether you are running
+  across the aim line) and sends `curve` in -1..1. The ball's heading then
+  rotates at up to 2.4 rad/s, decaying, without changing speed. Touches
+  clear spin; walls halve it.
+* **Lob**: the ball gets height (`z`, gravity 900). Above 18 units it sails
+  over outfield players, keepers reach up to 36, and a ball higher than the
+  42-unit crossbar bounces off the goal frame.
+* **Signature moves**: a per-player meter (0..1) charges from time on the
+  pitch, touches, kicks and completed passes. `E` uses it. Banana, thunder
+  and laser arm the next kick for 5 s; tackle, sprint and shockwave act
+  immediately. Bots use theirs when the situation fits (for example a
+  thunderbolt only when in range and lined up).
+* **Combos**: a kick followed within 3 s by a touch from a team-mate is a
+  completed pass. Three in a row powers up the team's next shot (+30%, fire
+  trail). Any opponent touch resets the chain.
+
+## Arenas and chaos (T-27)
+
+Arena feel multipliers live in `shared/rules.js` (`ARENAS`) and are applied
+in `shared/physics.js`, so client prediction of your own player stays exact
+on ice and mud. Pinball bumpers move as a pure function of the server tick,
+which the client replays too. Wind is server-only and acts on the ball,
+twice as hard on a ball in the air.
+
+Chaos events start every `chaosEvery` seconds of open play and last 3–15 s:
+Tiny Goals (goal mouth ×0.55; snapshots carry the live goal width), Golden
+Window (goals count double), Bouncy Castle, Frenzy (everyone gets Speed)
+and Pickup Rain (four boosts at once).
+
+## Player cards and celebrations (T-30, T-31)
+
+Profiles are keyed by the identity token in the browser's localStorage and
+saved to `data/profiles.json`. XP per match: 40 played, +60 win / +25 draw,
++25 per goal, +15 per assist, +10 per save, +10 per combo goal, +30 man of
+the match, plus tournament bonuses. Level L→L+1 costs 100 + 50·(L−1) XP, up
+to level 30. Cosmetic unlocks (hair, hair colour, boots, celebration) are
+validated on the server against your level. Players who take over a bot
+mid-match only earn for what they did after joining.
+
+When someone scores, the replay shows a player-cam card with their chosen
+celebration (bots get one derived from their name).
+
+## Tournament (T-32)
+
+The room's red nation is yours; the first opponent is the blue side, six
+more nations are drawn at random. Your fixture each round is played live.
+The others are simulated with the real engine and bots, a few hundred ticks
+at a time between event-loop turns. Knockout matches always use sudden
+death; a draw after that goes to a best-of-five penalty shoot-out. If you
+are knocked out, the rest of the bracket is simulated to crown a champion.
+
+## Highlights (T-33)
+
+The client keeps 5 s of snapshots. On each goal it stores the 2.8 s before
+and 0.9 s after. From the results screen it re-renders that clip with a
+second renderer off-screen, crops a smoothed follow-cam to 480×300 at
+15 fps, appends the player-cam celebration and encodes a GIF in the browser
+(`public/js/gif.js`, no dependencies).

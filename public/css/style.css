@@ -289,3 +289,4 @@ details .rules-grid { margin-top: 12px; }
 .highlights h3 { margin: 6px 0; }
 #highlightList { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
 .hl { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: var(--bg2); border-radius: 8px; padding: 5px 10px; font-size: 13px; }
+@media (pointer: coarse) { #skillMeter kbd { display: none; } #skillMeter { font-size: 12px; padding: 4px 10px; } #skillMeter .bar { width: 80px; } }

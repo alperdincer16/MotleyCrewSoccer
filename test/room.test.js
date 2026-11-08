@@ -136,3 +136,32 @@ test('kicked players are removed and told', () => {
   assert.equal(guest.last('room').room, null);
   room.destroy();
 });
+
+test('XP is awarded to seated humans with a player card; tournament mode plays the bracket', async () => {
+  const { lobby, host, guest } = setup();
+  host.token = 'tok-host'; lobby.profiles.get('tok-host', 'Host');
+  const room = lobby.createRoom(host, { name: 'Cup', mode: 'tournament', sides: { red: 'esp', blue: 'ned' }, rules: { matchSeconds: 60 } });
+  room.setMode(guest, 'match');
+  assert.equal(room.mode, 'tournament', 'only the host changes the mode');
+  room.pickSlot(host, 'red:FWD');
+  room.startGame(host); room.stopLoop();
+  assert.ok(room.tournament);
+  assert.deepEqual(room.match.sides, { red: 'esp', blue: 'ned' });
+  assert.equal(room.match.rules.suddenDeath, true, 'knockouts always have sudden death');
+  room.setTeam(host, 'blue', 'bra');
+  assert.equal(host.last('error').code, 'in_progress');
+  room.match.score.red = 2; room.match.time = 0.01; room.match.state = 'play';
+  room.tickOnce();
+  const end = host.last('matchEnd');
+  assert.ok(end.tournament && end.tournament.won);
+  const xp = host.last('matchXp');
+  assert.ok(xp.items.some(([label]) => label === 'Reached the semi-final'));
+  assert.equal(lobby.profiles.get('tok-host').wins, 1);
+  await new Promise(r => { const iv = setInterval(() => { if (!room.tournament.simulating) { clearInterval(iv); r(); } }, 20); });
+  assert.equal(room.tournament.round, 1);
+  assert.equal(room.sides.red, 'esp');
+  room.rematch(host);
+  room.setTeam(host, 'blue', 'bra');
+  assert.equal(host.last('error').code, 'tournament', 'the bracket picks the opponent');
+  room.destroy();
+});

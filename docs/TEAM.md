@@ -44,6 +44,14 @@ recorded here, in the header comment of each source file, and in the
 | T-16 | Procedural audio: whistle, kick, goal horn, pickup chime | Tomasz Nowak | Done |
 | T-17 | Unit tests: physics, rules, boosts, lobby/room flow | Rosa Vidal | Done |
 | T-18 | Headless bot-vs-bot soak test (full match completes, no NaNs) | Rosa Vidal | Done |
+| T-27 | Signature moves per nation, charged/curved/lob shots with ball height, combo passes, arenas (ice, mud, wind, pinball), chaos events, keeper saves; bots use specials | Diego Ferreira (physics/rules) / Mei Lin (bots) | Done |
+| T-28 | Visuals and sound for T-27: armed auras, slides, knockdowns, ball height and trails, bumpers, wind, arena surfaces, callouts | Tomasz Nowak | Done |
+| T-29 | HUD for T-27 (skill meter, combo pips, chaos and wind chips), quick shouts with speech bubbles, touch LOB/SKILL/shout buttons | Sam Okafor | Done |
+| T-30 | Player cards: persistent XP and levels, career stats, cosmetic unlocks validated server-side, results XP panel | Alex Mercer (design) / Priya Natarajan (storage) / Sam Okafor (UI) | Done |
+| T-31 | Goal celebrations (six animations, new sprite frames) on a player cam during the replay | Tomasz Nowak | Done |
+| T-32 | Tournament mode: 8-nation knockout, cooperative simulation of other fixtures, penalties, bracket and trophy UI | Priya Natarajan / Mei Lin / Sam Okafor | Done |
+| T-33 | Goal highlight GIF export with follow-cam and in-browser GIF encoder | Tomasz Nowak / Sam Okafor | Done |
+| T-34 | Tests for T-27 to T-33 | Rosa Vidal | Done |
 
 ## Working agreements
 
