@@ -17,6 +17,7 @@ const C2S = {
   LEAVE_SLOT: 'leaveSlot',   // {}
   READY: 'setReady',         // { ready }
   RULES: 'updateRules',      // { rules }      (host only)
+  SET_TEAM: 'setTeam',       // { side, nation } (host only)
   KICK: 'kickPlayer',        // { playerId }   (host only)
   START: 'startGame',        // {}             (host only)
   REMATCH: 'rematch',        // {}             (host only)

@@ -8,6 +8,7 @@
 'use strict';
 
 const MCS = require('../shared/rules');
+const Teams = require('../shared/teams');
 const Match = require('./game/match');
 const { BotBrain } = require('./game/ai');
 const { S2C } = require('./protocol');
@@ -26,13 +27,14 @@ function randomCode(n = 6) {
 }
 
 class Room {
-  constructor(lobby, host, { name, password, rules }) {
+  constructor(lobby, host, { name, password, rules, sides }) {
     this.lobby = lobby;
     this.id = 'r' + (nextRoomId++);
     this.name = String(name || `${host.name}'s game`).slice(0, 32);
     this.password = password ? String(password).slice(0, 64) : null;
     this.inviteCode = randomCode();
     this.rules = MCS.sanitizeRules(rules);
+    this.sides = sides ? Teams.sanitizeSides(sides) : Teams.randomPair();
     this.hostId = host.id;
     this.status = 'prematch';           // prematch | playing | ended
     this.players = new Map();           // playerId -> { id, name, slot, ready, connected, client }
@@ -64,7 +66,7 @@ class Room {
     client.room = this;
     this.broadcastRoom();
     if (this.status === 'playing' && this.match) {
-      client.send({ type: S2C.MATCH_START, rules: this.match.rules, roomId: this.id });
+      client.send({ type: S2C.MATCH_START, rules: this.match.rules, sides: this.sides, roomId: this.id });
     } else if (this.status === 'ended' && this.lastResult) {
       client.send(Object.assign({ type: S2C.MATCH_END }, this.lastResult));
     }
@@ -145,6 +147,17 @@ class Room {
     this.broadcastRoom();
   }
 
+  setTeam(client, side, nation) {
+    if (!this.isHost(client)) return this.error(client, 'not_host', 'Only the host can pick teams');
+    if (this.status === 'playing') return this.error(client, 'in_progress', 'Teams lock while a match is running');
+    if (!MCS.TEAMS.includes(side) || !Teams.get(nation)) return this.error(client, 'bad_team', 'Unknown team');
+    const other = MCS.otherTeam(side);
+    if (this.sides[other] === nation) this.sides[other] = this.sides[side]; // swap instead of duplicating
+    this.sides[side] = nation;
+    this.broadcastRoom();
+    this.lobby.broadcastLobby();
+  }
+
   kickPlayer(client, playerId) {
     if (!this.isHost(client)) return this.error(client, 'not_host', 'Only the host can kick');
     if (playerId === client.id) return;
@@ -173,12 +186,12 @@ class Room {
       const p = pid ? this.players.get(pid) : null;
       roster[slot] = p ? { name: p.name, isBot: false } : { isBot: true };
     }
-    this.match = new Match(this.rules, roster);
+    this.match = new Match(this.rules, roster, this.sides);
     this.brains = this.match.players.map(p => new BotBrain(p.id, p.pos === 'GK' ? 0.85 : 1)); // botSkill rule scales these at runtime
     this.status = 'playing';
     this.lastResult = null;
     for (const p of this.players.values()) p.ready = false;
-    this.broadcast({ type: S2C.MATCH_START, rules: this.match.rules, roomId: this.id });
+    this.broadcast({ type: S2C.MATCH_START, rules: this.match.rules, sides: this.sides, roomId: this.id });
     this.broadcastRoom();
     this.lobby.broadcastLobby();
     this.startLoop();
@@ -238,7 +251,7 @@ class Room {
   finishMatch() {
     this.stopLoop();
     this.status = 'ended';
-    this.lastResult = { winner: this.match.winner, score: Object.assign({}, this.match.score), stats: this.match.stats(), suddenDeath: this.match.suddenDeath };
+    this.lastResult = { winner: this.match.winner, score: Object.assign({}, this.match.score), stats: this.match.stats(), suddenDeath: this.match.suddenDeath, sides: this.sides };
     this.broadcast(Object.assign({ type: S2C.MATCH_END }, this.lastResult));
     this.broadcastRoom();
     this.lobby.broadcastLobby();
@@ -262,7 +275,7 @@ class Room {
       locked: !!this.password, humans: this.humanCount,
       slotsTaken: Object.values(this.slots).filter(Boolean).length,
       slotsTotal: MCS.TEAMS.length * MCS.TEAM_SIZE,
-      matchSeconds: this.rules.matchSeconds, createdAt: this.createdAt,
+      matchSeconds: this.rules.matchSeconds, createdAt: this.createdAt, sides: this.sides,
       score: this.match ? this.match.score : null,
       timeLeft: this.match ? Math.round(this.match.time) : null,
     };
@@ -272,7 +285,7 @@ class Room {
   state() {
     return {
       id: this.id, name: this.name, inviteCode: this.inviteCode, locked: !!this.password,
-      hostId: this.hostId, status: this.status, rules: this.rules, slots: this.slots,
+      hostId: this.hostId, status: this.status, rules: this.rules, slots: this.slots, sides: this.sides,
       players: [...this.players.values()].map(p => ({ id: p.id, name: p.name, slot: p.slot, ready: p.ready, connected: p.connected })),
     };
   }

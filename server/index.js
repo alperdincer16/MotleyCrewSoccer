@@ -91,13 +91,14 @@ class Client {
         return;
       }
       case C2S.LIST: return this.send({ type: S2C.LOBBY, games: this.lobby.list() });
-      case C2S.CREATE: return void this.lobby.createRoom(this, { name: msg.name, password: msg.password, rules: msg.rules });
+      case C2S.CREATE: return void this.lobby.createRoom(this, { name: msg.name, password: msg.password, rules: msg.rules, sides: msg.sides });
       case C2S.JOIN: return this.lobby.joinRoom(this, { roomId: msg.roomId, password: msg.password, invite: msg.invite });
       case C2S.LEAVE: if (room) { room.disconnectPlayer(this, true); this.send({ type: S2C.ROOM, room: null }); } return;
       case C2S.PICK_SLOT: return room && room.pickSlot(this, msg.slot);
       case C2S.LEAVE_SLOT: return room && room.leaveSlot(this);
       case C2S.READY: return room && room.setReady(this, msg.ready);
       case C2S.RULES: return room && room.updateRules(this, msg.rules);
+      case C2S.SET_TEAM: return room && room.setTeam(this, msg.side, msg.nation);
       case C2S.KICK: return room && room.kickPlayer(this, msg.playerId);
       case C2S.START: return room && room.startGame(this);
       case C2S.REMATCH: return room && room.rematch(this);
