@@ -21,8 +21,8 @@
   function applySides(sides) {
     const s = Teams.sanitizeSides(sides);
     const kits = Teams.resolveKits(s.red, s.blue);
-    document.documentElement.style.setProperty('--teamRed', Teams.sideColor(kits.red));
-    document.documentElement.style.setProperty('--teamBlue', Teams.sideColor(kits.blue));
+    document.documentElement.style.setProperty('--teamRed', window.readableTeamColor(Teams.sideColor(kits.red)));
+    document.documentElement.style.setProperty('--teamBlue', window.readableTeamColor(Teams.sideColor(kits.blue)));
     return { sides: s, kits };
   }
   window.spriteAvatar = avatar;
@@ -156,9 +156,8 @@
       for (const team of MCS.TEAMS) {
         const box = $('createSide-' + team); box.innerHTML = '';
         const nation = Teams.get(this.createSides[team]);
-        box.style.borderTopColor = Teams.sideColor(kits[team]);
+        box.style.borderTopColor = window.readableTeamColor(Teams.sideColor(kits[team]));
         const pick = el('div', 'pick');
-        pick.appendChild(el('span', 'flag', nation.flag));
         const sel = el('select', 'team-select');
         for (const id of Teams.IDS) {
           const o = el('option', null, `${Teams.NATIONS[id].flag} ${Teams.NATIONS[id].name}`); o.value = id; o.selected = id === this.createSides[team];
@@ -188,20 +187,23 @@
       this.games = games;
       const list = $('gameList'); list.innerHTML = '';
       $('noGames').classList.toggle('hidden', games.length > 0);
-      $('gameCount').textContent = games.length ? `${games.length} game${games.length === 1 ? '' : 's'} · ${games.reduce((a, g) => a + g.humans, 0)} players online in rooms` : '';
+      $('gameCount').textContent = games.length ? `${games.length} game${games.length === 1 ? '' : 's'} · ${games.reduce((a, g) => a + g.humans, 0)} player${games.reduce((a, g) => a + g.humans, 0) === 1 ? '' : 's'} in rooms` : '';
       for (const g of games) {
         const card = el('div', 'game-card');
         const title = el('div', 'title');
         const na = Teams.get(g.sides && g.sides.red), nb = Teams.get(g.sides && g.sides.blue);
-        title.appendChild(el('span', null, (g.locked ? '🔒 ' : '') + g.name + (na && nb ? `  ${na.flag} v ${nb.flag}` : '')));
-        if (g.mode === 'tournament') title.appendChild(el('span', 'badge tour', `🏆 ${g.round || 'Tournament'}`));
-        if (g.arena && g.arena !== 'classic' && MCS.ARENAS[g.arena]) title.appendChild(el('span', 'badge', `${MCS.ARENAS[g.arena].icon} ${MCS.ARENAS[g.arena].label}`));
+        title.appendChild(el('span', 'name', (g.locked ? '🔒 ' : '') + g.name));
+        const badges = el('span', 'badges');
+        if (g.mode === 'tournament') badges.appendChild(el('span', 'badge tour', `🏆 ${g.round || 'Tournament'}`));
+        if (g.arena && g.arena !== 'classic' && MCS.ARENAS[g.arena]) badges.appendChild(el('span', 'badge', `${MCS.ARENAS[g.arena].icon} ${MCS.ARENAS[g.arena].label}`));
         const badge = el('span', 'badge ' + (g.status === 'playing' ? 'live' : g.status === 'ended' ? 'ended' : 'open'));
         badge.textContent = g.status === 'playing' ? 'Live' : g.status === 'ended' ? 'Full time' : 'Waiting';
-        title.appendChild(badge);
+        badges.appendChild(badge);
+        title.appendChild(badges);
         card.appendChild(title);
+        if (na && nb) card.appendChild(el('div', 'matchup', `${na.flag} ${na.name}  v  ${nb.flag} ${nb.name}`));
         const meta = el('div', 'meta');
-        meta.appendChild(el('span', null, `Host: ${g.hostName}`));
+        meta.appendChild(el('span', null, `Host ${g.hostName}`));
         meta.appendChild(el('span', null, `${g.humans} human${g.humans === 1 ? '' : 's'} · ${g.slotsTaken}/${g.slotsTotal} slots`));
         meta.appendChild(el('span', null, `${Math.round(g.matchSeconds / 60)} min`));
         if (g.status === 'playing' && g.score) meta.appendChild(el('span', null, `Score ${g.score.red}–${g.score.blue} · ${Math.floor(g.timeLeft / 60)}:${String(g.timeLeft % 60).padStart(2, '0')} left`));
@@ -264,8 +266,8 @@
       for (const p of room.players) {
         const li = el('li', p.connected ? '' : 'offline');
         li.appendChild(el('span', null, p.name));
-        if (p.id === room.hostId) li.appendChild(el('span', 'tag', 'HOST'));
-        if (p.id === this.net.id) li.appendChild(el('span', 'tag', 'YOU'));
+        if (p.id === room.hostId) li.appendChild(el('span', 'badge', 'Host'));
+        if (p.id === this.net.id) li.appendChild(el('span', 'badge open', 'You'));
         li.appendChild(el('span', 'tag', p.slot ? (() => { const { team, pos } = MCS.parseSlot(p.slot); return Teams.botName(sides[team], team, pos); })() : 'spectating'));
         if (host && p.id !== this.net.id) { const k = el('button', 'ghost small kick', 'Kick'); k.onclick = () => this.net.send('kickPlayer', { playerId: p.id }); li.appendChild(k); }
         pl.appendChild(li);
@@ -351,7 +353,6 @@
       const head = $('team-head-' + team); head.innerHTML = '';
       const nation = Teams.get(nationId);
       const title = el('div', 'team-title');
-      title.appendChild(el('span', 'flag', nation.flag));
       if (editable) {
         const sel = el('select', 'team-select');
         for (const id of Teams.IDS) {
@@ -361,6 +362,7 @@
         sel.onchange = () => this.net.send('setTeam', { side: team, nation: sel.value });
         title.appendChild(sel);
       } else {
+        title.appendChild(el('span', 'flag', nation.flag));
         title.appendChild(el('h2', null, nation.name));
       }
       head.appendChild(title);

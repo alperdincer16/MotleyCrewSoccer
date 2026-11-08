@@ -38,6 +38,7 @@
       this.particles = [];
       this.shake = 0;
       this.ballSpin = 0;
+      this.ballRot = [1, 0, 0, 0, 1, 0, 0, 0, 1];   // ball orientation (row-major 3x3), rolled in drawBall
       this.time = 0;
       this.pitchCache = null;
       this.goalWidth = 180;
@@ -477,18 +478,10 @@
         ctx.strokeStyle = 'rgba(255,255,255,.35)'; ctx.lineWidth = r * 1.2; ctx.lineCap = 'round';
         ctx.beginPath(); ctx.moveTo(b.x, by); ctx.lineTo(b.x - b.vx * 0.03, by - b.vy * 0.03); ctx.stroke();
       }
-      b = Object.assign({}, b, { r });
-      ctx.save(); ctx.translate(b.x, by);
-      ctx.beginPath(); ctx.arc(0, 0, b.r, 0, Math.PI * 2); ctx.fillStyle = b.giant ? '#aef7df' : '#fff'; ctx.fill();
-      ctx.lineWidth = 2; ctx.strokeStyle = '#333'; ctx.stroke();
-      // pentagon patches
-      ctx.rotate(this.ballSpin * Math.sign(b.vx || 1));
-      ctx.fillStyle = '#222';
-      for (let i = 0; i < 3; i++) {
-        const a = i * Math.PI * 2 / 3;
-        ctx.beginPath(); ctx.arc(Math.cos(a) * b.r * 0.5, Math.sin(a) * b.r * 0.5, b.r * 0.28, 0, Math.PI * 2); ctx.fill();
-      }
-      ctx.restore();
+      // Roll the 3D orientation: moving along v spins the ball about (-vy, vx, 0).
+      if (speed > 1 && dt > 0) rotateBall(this.ballRot, -b.vy / speed, b.vx / speed, 0, speed * dt / Math.max(6, b.r));
+      if (b.spin && dt > 0) rotateBall(this.ballRot, 0, 0, 1, b.spin * dt * 2); // sidespin on curved shots
+      drawSoccerBall(ctx, b.x, by, r, this.ballRot, b.giant);
     }
 
     drawParticles() {
@@ -502,6 +495,85 @@
       ctx.globalAlpha = 1;
     }
   }
+
+  // ---- Soccer ball (T-36) -------------------------------------------------
+  // A truncated icosahedron: 12 black pentagons sit on the icosahedron's
+  // vertices, and each pentagon corner lies a third of the way along an edge.
+  const BALL = (() => {
+    const t = (1 + Math.sqrt(5)) / 2, raw = [];
+    for (const a of [-1, 1]) for (const b of [-t, t]) raw.push([0, a, b], [a, b, 0], [b, 0, a]);
+    const n = (v) => { const l = Math.hypot(v[0], v[1], v[2]); return [v[0] / l, v[1] / l, v[2] / l]; };
+    const V = raw.map(n);
+    const d2 = (p, q) => (p[0] - q[0]) ** 2 + (p[1] - q[1]) ** 2 + (p[2] - q[2]) ** 2;
+    const edge = Math.min(...V.slice(1).map(v => d2(V[0], v)));
+    const lerp = (p, q, f) => n([p[0] + (q[0] - p[0]) * f, p[1] + (q[1] - p[1]) * f, p[2] + (q[2] - p[2]) * f]);
+    const pentagons = [], seams = [];
+    V.forEach((c, i) => {
+      const nb = V.map((v, j) => j).filter(j => j !== i && Math.abs(d2(c, V[j]) - edge) < 1e-6);
+      // Order the five neighbours around the centre so the corners form a polygon.
+      const u = n(V[nb[0]].map((x, k) => x - c[k] * (c[0] * V[nb[0]][0] + c[1] * V[nb[0]][1] + c[2] * V[nb[0]][2])));
+      const w = [c[1] * u[2] - c[2] * u[1], c[2] * u[0] - c[0] * u[2], c[0] * u[1] - c[1] * u[0]];
+      nb.sort((p, q) => Math.atan2(dot(V[p], w), dot(V[p], u)) - Math.atan2(dot(V[q], w), dot(V[q], u)));
+      pentagons.push({ c, pts: nb.map(j => lerp(c, V[j], 1 / 3)) });
+      for (const j of nb) if (j > i) seams.push([lerp(c, V[j], 1 / 3), lerp(c, V[j], 2 / 3)]);
+    });
+    function dot(p, q) { return p[0] * q[0] + p[1] * q[1] + p[2] * q[2]; }
+    return { pentagons, seams };
+  })();
+
+  /** Pre-multiply the orientation matrix M by a rotation of `ang` about axis (x, y, z). */
+  function rotateBall(M, x, y, z, ang) {
+    const c = Math.cos(ang), s = Math.sin(ang), k = 1 - c;
+    const R = [c + x * x * k, x * y * k - z * s, x * z * k + y * s,
+               y * x * k + z * s, c + y * y * k, y * z * k - x * s,
+               z * x * k - y * s, z * y * k + x * s, c + z * z * k];
+    const out = new Array(9);
+    for (let i = 0; i < 3; i++) for (let j = 0; j < 3; j++) out[i * 3 + j] = R[i * 3] * M[j] + R[i * 3 + 1] * M[3 + j] + R[i * 3 + 2] * M[6 + j];
+    // Re-orthonormalise the rows so rounding never skews the ball.
+    const r0 = out.slice(0, 3), r1 = out.slice(3, 6);
+    const l0 = Math.hypot(...r0); for (let i = 0; i < 3; i++) r0[i] /= l0;
+    const d = r0[0] * r1[0] + r0[1] * r1[1] + r0[2] * r1[2]; for (let i = 0; i < 3; i++) r1[i] -= d * r0[i];
+    const l1 = Math.hypot(...r1); for (let i = 0; i < 3; i++) r1[i] /= l1;
+    const r2 = [r0[1] * r1[2] - r0[2] * r1[1], r0[2] * r1[0] - r0[0] * r1[2], r0[0] * r1[1] - r0[1] * r1[0]];
+    M.splice(0, 9, ...r0, ...r1, ...r2);
+  }
+
+  /** Draw a shaded black-and-white ball of radius r at (x, y), oriented by M; z points at the viewer. */
+  function drawSoccerBall(ctx, x, y, r, M, giant) {
+    const P = (v) => [M[0] * v[0] + M[1] * v[1] + M[2] * v[2], M[3] * v[0] + M[4] * v[1] + M[5] * v[2], M[6] * v[0] + M[7] * v[1] + M[8] * v[2]];
+    // Points just behind the rim are pulled onto it so edge patches wrap round.
+    const S = (q) => { if (q[2] >= 0) return [q[0] * r, q[1] * r]; const l = Math.hypot(q[0], q[1]) || 1; return [q[0] / l * r, q[1] / l * r]; };
+    ctx.save(); ctx.translate(x, y);
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fillStyle = giant ? '#c8fbea' : '#fbfbfb'; ctx.fill();
+    ctx.save(); ctx.clip();
+    // Hexagon seams
+    ctx.strokeStyle = 'rgba(40,40,48,.45)'; ctx.lineWidth = Math.max(0.6, r * 0.06);
+    ctx.beginPath();
+    for (const [a, b] of BALL.seams) {
+      const pa = P(a), pb = P(b);
+      if (pa[2] < -0.05 && pb[2] < -0.05) continue;
+      const sa = S(pa), sb = S(pb); ctx.moveTo(sa[0], sa[1]); ctx.lineTo(sb[0], sb[1]);
+    }
+    ctx.stroke();
+    // Black pentagons
+    ctx.fillStyle = giant ? '#1f6f5a' : '#16161c';
+    for (const pg of BALL.pentagons) {
+      if (P(pg.c)[2] < -0.2) continue;
+      ctx.beginPath();
+      pg.pts.forEach((v, i) => { const sp = S(P(v)); if (i) ctx.lineTo(sp[0], sp[1]); else ctx.moveTo(sp[0], sp[1]); });
+      ctx.closePath(); ctx.fill();
+    }
+    // Light from the top left: soft shading plus a highlight.
+    const g = ctx.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.1, 0, 0, r);
+    g.addColorStop(0, 'rgba(255,255,255,.35)'); g.addColorStop(0.55, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(0,0,0,.38)');
+    ctx.fillStyle = g; ctx.fillRect(-r, -r, r * 2, r * 2);
+    ctx.restore();
+    ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.lineWidth = Math.max(1, Math.min(2, r * 0.1)); ctx.strokeStyle = 'rgba(20,20,26,.8)'; ctx.stroke();
+    ctx.restore();
+  }
+  Renderer.drawSoccerBall = drawSoccerBall;
 
   Renderer.COLORS = COLORS;
   window.Renderer = Renderer;
