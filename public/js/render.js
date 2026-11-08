@@ -157,6 +157,21 @@
       for (const p of sorted) this.drawPlayer(p, p.id === opts.mySlot);
       this.drawBall(view.ball, dt);
       this.drawParticles();
+      if (opts.replay) this.drawReplayOverlay();
+    }
+
+    drawReplayOverlay() {
+      const ctx = this.ctx;
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      const cw = this.canvas.width, ch = this.canvas.height;
+      ctx.fillStyle = 'rgba(0,0,0,.55)';
+      ctx.fillRect(0, 0, cw, 36); ctx.fillRect(0, ch - 36, cw, 36);
+      ctx.fillStyle = '#ffd166'; ctx.font = 'bold 18px system-ui, sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      ctx.fillText('REPLAY', cw - 24, ch - 18);
+      ctx.fillStyle = Math.sin(this.time * 6) > 0 ? '#ff4d5e' : 'rgba(255,77,94,.35)';
+      ctx.beginPath(); ctx.arc(cw - 112, ch - 18, 6, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,.08)';
+      for (let y = 36; y < ch - 36; y += 6) ctx.fillRect(0, y, cw, 1);
     }
 
     drawPickup(pk) {

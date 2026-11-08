@@ -78,6 +78,7 @@
     pickup() { [660, 880, 1320].forEach((f, i) => this.tone(f, 0.15, { type: 'triangle', gain: 0.15, start: i * 0.06 })); }
     dash() { this.noise(0.18, { gain: 0.2, filter: 2000, type: 'highpass' }); this.tone(300, 0.15, { type: 'sine', gain: 0.1, slide: 900 }); }
     freeze() { this.tone(1800, 0.6, { type: 'sine', gain: 0.12, slide: 300 }); this.noise(0.5, { gain: 0.1, filter: 4000, type: 'highpass' }); }
+    tick() { this.tone(1000, 0.06, { type: 'square', gain: 0.08 }); }
     end() { this.whistle(true); }
   }
 
