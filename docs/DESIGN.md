@@ -152,8 +152,9 @@ variance).
 
 ## Stadium and crowd
 
-The arena sits inside four stands of pixel fans (about 2,000 seats across
-four rows per side) behind advertising hoardings that carry the fixture.
+The arena sits inside four stands of pixel fans (about 900 seats across
+three rows per side, each fan a 10×14 pixel figure with a face) behind
+advertising hoardings that carry the fixture.
 Fans behind each goal support that side; the long stands are split home
 end left and away end right with neutrals mixed in. Every fan has a seat,
 a shirt colour derived from the nation's colour, a skin tone and a phase.

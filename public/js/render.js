@@ -84,13 +84,13 @@
       ctx.save(); ctx.translate(M, M);
       // Stands: concrete terraces behind the hoardings, stepped rows.
       ctx.fillStyle = '#1a1f26'; ctx.fillRect(-M, -M, W + 2 * M, H + 2 * M);
-      for (let r = 0; r < 4; r++) {
-        const inset = 30 + r * 16;
+      for (let r = 0; r < 3; r++) {
+        const inset = 30 + r * 23;
         ctx.fillStyle = r % 2 ? '#20262e' : '#242b34';
-        ctx.fillRect(-inset - 16, -inset - 16, W + 2 * (inset + 16), 16);
-        ctx.fillRect(-inset - 16, H + inset, W + 2 * (inset + 16), 16);
-        ctx.fillRect(-inset - 16, -inset, 16, H + 2 * inset);
-        ctx.fillRect(W + inset, -inset, 16, H + 2 * inset);
+        ctx.fillRect(-inset - 23, -inset - 23, W + 2 * (inset + 23), 23);
+        ctx.fillRect(-inset - 23, H + inset, W + 2 * (inset + 23), 23);
+        ctx.fillRect(-inset - 23, -inset, 23, H + 2 * inset);
+        ctx.fillRect(W + inset, -inset, 23, H + 2 * inset);
       }
       // Hoardings: advertising boards between the wall and the front row.
       const boardY = [-28, H + 14];

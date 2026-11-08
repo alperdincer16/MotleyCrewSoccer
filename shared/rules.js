@@ -15,7 +15,7 @@
   const FIELD = {
     width: 1200,
     height: 700,
-    margin: 110,         // space around the arena for goal pockets, hoardings and the stands
+    margin: 122,         // space around the arena for goal pockets, hoardings and the stands
     goalDepth: 50,       // how deep the goal pocket is behind the goal line
     cornerRadius: 50,    // rounded arena corners (they curl the ball a little)
   };

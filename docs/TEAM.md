@@ -39,7 +39,7 @@ recorded here, in the header comment of each source file, and in the
 | T-22 | Bot quality: per-tick kick safety, passing lanes, spacing, keeper reads, host-set bot skill | Mei Lin | Done |
 | T-23 | Instant replay on goals, golden-goal banner, clock pulse and ticks, kick/post shake | Sam Okafor / Tomasz Nowak | Done |
 | T-24 | Input rate limiting, aim clamping, physics guarantee tests | Priya Natarajan / Rosa Vidal | Done |
-| T-26 | Stadium: stands with ~2,000 animated pixel fans, hoardings, flags; crowd reacts to tension, goals, posts, pickups, final minute, full time, Mexican wave; procedural crowd audio | Tomasz Nowak | Done |
+| T-26 | Stadium: stands with ~900 large animated pixel fans, hoardings, flags; crowd reacts to tension, goals, posts, pickups, final minute, full time, Mexican wave; procedural crowd audio | Tomasz Nowak | Done |
 | T-25 | National teams: 16 nations with home/alt kits, keeper kits, traits and bot play styles; team pickers in create dialog and pre-match room; kit-clash resolution | Mei Lin (styles) / Tomasz Nowak (kits) / Sam Okafor (picker) / Rosa Vidal (tests) | Done |
 | T-16 | Procedural audio: whistle, kick, goal horn, pickup chime | Tomasz Nowak | Done |
 | T-17 | Unit tests: physics, rules, boosts, lobby/room flow | Rosa Vidal | Done |

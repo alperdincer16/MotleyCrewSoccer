@@ -74,47 +74,47 @@
         });
       };
       const depth0 = 44;      // distance from the arena edge to the front row's feet
-      const rowGap = 16;
-      const rows = 4;
-      const seat = 8.5;
+      const rowGap = 23;      // rows are deep enough for the taller fans
+      const rows = 3;
+      const seat = 13;
       const pocketPad = 10;
       // North and south stands run the full width including the corners.
       // Home end is the left half, away end the right, with neutrals mixed in.
       const x0 = -M + 12, x1 = W + M - 12;
       for (let r = rows - 1; r >= 0; r--) {
         for (let x = x0; x <= x1; x += seat) {
-          const jitter = rnd(-1.5, 1.5);
+          const jitter = rnd(-2, 2);
           const team = x < W / 2 ? (Math.random() < 0.85 ? 'red' : 'blue') : (Math.random() < 0.85 ? 'blue' : 'red');
           addFan(x + jitter, -depth0 - r * rowGap, team, 'north', ((x - x0) / (x1 - x0)) * 0.35);
         }
       }
       for (let r = rows - 1; r >= 0; r--) {
         for (let x = x1; x >= x0; x -= seat) {
-          const jitter = rnd(-1.5, 1.5);
+          const jitter = rnd(-2, 2);
           const team = x < W / 2 ? (Math.random() < 0.85 ? 'red' : 'blue') : (Math.random() < 0.85 ? 'blue' : 'red');
-          addFan(x + jitter, H + depth0 + r * rowGap + 10, team, 'south', 0.5 + ((x1 - x) / (x1 - x0)) * 0.35);
+          addFan(x + jitter, H + depth0 + r * rowGap + 16, team, 'south', 0.5 + ((x1 - x) / (x1 - x0)) * 0.35);
         }
       }
       // West (red end) and east (blue end) stands: columns behind the goals.
       const gh = 160 + pocketPad; // generous: skip seats that would sit in the goal pocket
       for (let r = rows - 1; r >= 0; r--) {
         for (let y = 14; y <= H - 14; y += seat) {
-          const jitter = rnd(-1.5, 1.5);
+          const jitter = rnd(-2, 2);
           const inPocket = Math.abs(y - H / 2) < gh && r === 0;
-          if (!inPocket) addFan(-depth0 - r * rowGap + 8, y + jitter + 8, 'red', 'west', 0.85 + ((H - y) / H) * 0.15);
-          if (!inPocket) addFan(W + depth0 + r * rowGap - 8, y + jitter + 8, 'blue', 'east', 0.35 + (y / H) * 0.15);
+          if (!inPocket) addFan(-depth0 - r * rowGap + 10, y + jitter + 12, 'red', 'west', 0.85 + ((H - y) / H) * 0.15);
+          if (!inPocket) addFan(W + depth0 + r * rowGap - 10, y + jitter + 12, 'blue', 'east', 0.35 + (y / H) * 0.15);
         }
       }
       this.fans = fans;
       // Flags: a few per end, waved harder when excited.
       this.flags = [];
       for (let i = 0; i < 7; i++) {
-        this.flags.push({ x: -depth0 - 20 - (i % 3) * 14, y: 40 + i * 90, team: 'red', color: this.colors.red, phase: Math.random() * 6 });
-        this.flags.push({ x: W + depth0 + 20 + (i % 3) * 14, y: 40 + i * 90, team: 'blue', color: this.colors.blue, phase: Math.random() * 6 });
+        this.flags.push({ x: -depth0 - 24 - (i % 3) * 20, y: 40 + i * 90, team: 'red', color: this.colors.red, phase: Math.random() * 6 });
+        this.flags.push({ x: W + depth0 + 24 + (i % 3) * 20, y: 40 + i * 90, team: 'blue', color: this.colors.blue, phase: Math.random() * 6 });
       }
       for (let i = 0; i < 6; i++) {
-        this.flags.push({ x: 60 + i * 100, y: -depth0 - 44, team: 'red', color: this.colors.red, phase: Math.random() * 6 });
-        this.flags.push({ x: W - 60 - i * 100, y: -depth0 - 44, team: 'blue', color: this.colors.blue, phase: Math.random() * 6 });
+        this.flags.push({ x: 60 + i * 100, y: -depth0 - 48, team: 'red', color: this.colors.red, phase: Math.random() * 6 });
+        this.flags.push({ x: W - 60 - i * 100, y: -depth0 - 48, team: 'blue', color: this.colors.blue, phase: Math.random() * 6 });
       }
     }
 
@@ -190,21 +190,21 @@
       if (this.clap) {
         // unison clap at 2 Hz: a quick hop on the beat
         const beat = (t * 2) % 1;
-        up = beat < 0.25 ? Math.sin(beat / 0.25 * Math.PI) * 3 : 0;
+        up = beat < 0.25 ? Math.sin(beat / 0.25 * Math.PI) * 5 : 0;
         arms = beat < 0.3;
       } else if (team && (this.celebrate[team] > 0 || (this.finale === team))) {
         const jump = Math.sin(t * (5 + f.rate) + f.phase);
-        up = Math.max(0, jump) * 7;
+        up = Math.max(0, jump) * 11;
         arms = true;
       } else {
-        const amp = 0.6 + e * 4.5, freq = 1.2 + e * 4;
+        const amp = 1 + e * 7, freq = 1.2 + e * 4;
         up = Math.max(0, Math.sin(t * freq * f.rate + f.phase)) * amp;
         arms = e > 0.75 && Math.sin(t * 3 + f.phase) > 0.2;
       }
-      if (this.gaspT > 0) up -= 2 * Math.sin((0.7 - this.gaspT) / 0.7 * Math.PI); // flinch: duck then recover
+      if (this.gaspT > 0) up -= 3 * Math.sin((0.7 - this.gaspT) / 0.7 * Math.PI); // flinch: duck then recover
       if (this.wave) {
         const d = f.perim - this.wave.t;
-        if (d > -0.06 && d < 0.02) { const k = (0.02 - d) / 0.08; up += Math.sin(k * Math.PI) * 9; arms = k > 0.3 && k < 0.8; }
+        if (d > -0.06 && d < 0.02) { const k = (0.02 - d) / 0.08; up += Math.sin(k * Math.PI) * 14; arms = k > 0.3 && k < 0.8; }
       }
       return { up, arms, slump: false };
     }
@@ -215,21 +215,24 @@
         const f = fans[i];
         const { up, arms, slump } = this.pose(f);
         const y = f.y - up;
-        // body 6x5, head 4x4; slumped fans sit lower with a darker shirt
+        // body 10x8, head 6x6; slumped fans sit lower with a darker shirt
+        const sl = slump ? 3 : 0;
         ctx.fillStyle = slump ? shade(f.color.startsWith('#') ? f.color : '#777777', 0.7) : f.color;
-        ctx.fillRect(f.x - 3, y - 5 + (slump ? 2 : 0), 6, 5);
+        ctx.fillRect(f.x - 5, y - 8 + sl, 10, 8);
         ctx.fillStyle = f.skin;
-        ctx.fillRect(f.x - 2, y - 9 + (slump ? 2 : 0), 4, 4);
-        if (f.hat) { ctx.fillStyle = f.team ? this.colors[f.team] : '#222'; ctx.fillRect(f.x - 2, y - 10 + (slump ? 2 : 0), 4, 1); }
-        if (arms) { ctx.fillStyle = f.skin; ctx.fillRect(f.x - 4, y - 11, 1, 4); ctx.fillRect(f.x + 3, y - 11, 1, 4); }
+        ctx.fillRect(f.x - 3, y - 14 + sl, 6, 6);
+        ctx.fillStyle = '#1a1a1a';
+        ctx.fillRect(f.x - 2, y - 11 + sl, 1, 1); ctx.fillRect(f.x + 1, y - 11 + sl, 1, 1);   // eyes
+        if (f.hat) { ctx.fillStyle = f.team ? this.colors[f.team] : '#222'; ctx.fillRect(f.x - 3, y - 16 + sl, 6, 2); }
+        if (arms) { ctx.fillStyle = f.skin; ctx.fillRect(f.x - 7, y - 18, 2, 7); ctx.fillRect(f.x + 5, y - 18, 2, 7); }
       }
       // Flags wave with excitement
       for (const fl of this.flags) {
         const e = this.excite[fl.team];
         const wobble = Math.sin(this.time * (2 + e * 6) + fl.phase) * (2 + e * 5);
-        ctx.fillStyle = '#d9d9d9'; ctx.fillRect(fl.x, fl.y - 22, 1, 22);
+        ctx.fillStyle = '#d9d9d9'; ctx.fillRect(fl.x, fl.y - 30, 2, 30);
         ctx.fillStyle = fl.color;
-        ctx.beginPath(); ctx.moveTo(fl.x + 1, fl.y - 22); ctx.lineTo(fl.x + 12 + wobble, fl.y - 18 + wobble * 0.3); ctx.lineTo(fl.x + 1, fl.y - 13); ctx.closePath(); ctx.fill();
+        ctx.beginPath(); ctx.moveTo(fl.x + 2, fl.y - 30); ctx.lineTo(fl.x + 18 + wobble, fl.y - 24 + wobble * 0.3); ctx.lineTo(fl.x + 2, fl.y - 17); ctx.closePath(); ctx.fill();
       }
     }
   }
