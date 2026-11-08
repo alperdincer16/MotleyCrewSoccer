@@ -65,6 +65,28 @@ boosts. Any slot a human does not take is played by a bot.
   in the box, and clears. A loose ball sitting on the goal line behind the
   keeper is swept out sideways past the post rather than touched in.
 
+## Team play (T-40)
+
+Each team has one **presser**: the outfield player best placed to reach the
+ball (a human on the ball always counts as the presser, so bots never take
+it off a team-mate). When the opponent has the ball in our half, one more bot,
+preferably the defender, **covers** between the ball and our goal. Everyone
+else keeps the team's **shape**: formation spots that slide with the ball,
+squeezing up when defending and stretching wide and high when we have it so
+there is always a pass on. A presser facing a dribbler **jockeys** goal-side
+for a moment before committing to a tackle, and backs off again if it fails.
+On the ball, bots shoot from a clear look, pass to an open team-mate, carry it
+forward when there is room, and only clear it under pressure.
+
+## Possession (T-41)
+
+* Bumping into a ball that someone is dribbling does not knock it loose;
+  only a tackle (a kick) can win it.
+* For 0.7 s after winning the ball, even tackles can't take it, and the
+  player who just lost it can't snatch it straight back.
+* Right next to their own goal, a player's body touch never sends the ball
+  backwards into the net (keepers get a bigger zone).
+
 ## Ball control
 
 * **First touch**: a ball reaching you slower than ~260 u/s is cushioned

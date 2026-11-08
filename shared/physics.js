@@ -66,8 +66,11 @@
     dribblePush: 12,         // how much faster than you a cushioned touch rolls (was a flat 40)
     trapGrip: 0.55,          // share of sideways spin a cushioned touch kills
     carryReach: 12,          // ball within this of your feet is "on your foot"
-    carryMaxRel: 240,        // ...if it moves slower than this relative to you
-    carryGrip: 0.22,         // per 1/60 s pull of the ball toward the carry point
+    carryMaxRel: 300,        // ...if it moves slower than this relative to you
+    carryGrip: 0.34,         // per 1/60 s pull of the ball toward the carry point (T-41: was 0.22)
+    carryContested: 0.75,    // grip kept with an opponent alongside (was 0.5)
+    protectTime: 0.7,        // seconds a fresh ball-winner can't be robbed (T-41)
+    regainTime: 0.6,         // a player who just lost the ball can't win it straight back
     carryAim: 0.75,          // kick-direction weight given to your aim while carrying (0.55 otherwise)
   };
 

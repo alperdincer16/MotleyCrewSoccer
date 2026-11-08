@@ -31,12 +31,13 @@ test('a bot midfielder holds the middle and steps in when the ball comes close',
   mid.x = W * 0.4; mid.y = H / 2;
   for (const p of m.players) if (p !== mid && p.team === 'red') { p.x = m.ball.x - 30; p.y = m.ball.y + 30; }
   brain.think(m, mid);
-  assert.equal(brain.lastPlan, 'mid-hold');
+  assert.ok(['shape', 'support'].includes(brain.lastPlan), `holds shape (${brain.lastPlan})`);
   assert.ok(brain.target.x > W * 0.18 && brain.target.x < W * 0.82);
   mid.x = m.ball.x - 60; mid.y = m.ball.y;
   for (const p of m.players) if (p !== mid && p.team === 'red') { p.x = 100; p.y = 100; }
+  m.tick++;   // new tick: the team plan is recomputed
   brain.think(m, mid);
-  assert.notEqual(brain.lastPlan, 'mid-hold');
+  assert.ok(!['shape', 'support', 'cover'].includes(brain.lastPlan), `presses (${brain.lastPlan})`);
 });
 
 test('first touch: a firm pass into a standing player is cushioned, a hard shot still bounces', () => {
