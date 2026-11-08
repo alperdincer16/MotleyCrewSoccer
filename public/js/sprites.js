@@ -75,6 +75,12 @@
       case 'sleeves': rect(2, 9, 1, 2, 'k'); rect(11, 9, 1, 2, 'k'); rect(3, 9, 1, 1, 'k'); rect(10, 9, 1, 1, 'k'); break;
       case 'band': rect(3, 10, 8, 1, 'k'); rect(2, 9, 1, 2, 'k'); rect(11, 9, 1, 2, 'k'); break;
       case 'hoops': rect(3, 10, 8, 1, 'k'); rect(3, 12, 8, 1, 'k'); break;
+      case 'sash': for (let y = 9; y <= 12; y++) rect(3 + (y - 9) * 2, y, 2, 1, 'k'); break;
+      case 'checks': for (let y = 9; y <= 12; y++) for (let x = 3; x <= 10; x++) if ((x + y) % 2 === 0) put(x, y, 'k'); break;
+      case 'halves': rect(3, 9, 4, 4, 'k'); rect(2, 9, 1, 2, 'k'); break;
+      case 'center': rect(6, 9, 2, 4, 'k'); break;
+      case 'vee': put(4, 9, 'k'); put(9, 9, 'k'); put(5, 10, 'k'); put(8, 10, 'k'); rect(6, 11, 2, 1, 'k'); break;
+      case 'plain': default: break;
     }
     if (gk) { put(2, 12, 'g'); put(11, 12, 'g'); put(2, 13, 'g'); put(11, 13, 'g'); }
     // Shorts
@@ -119,10 +125,13 @@
    */
   function canvas(o) {
     const look = lookFor(o.name);
-    const key = [o.team, o.pos, look.skin, look.hair, look.style, o.frame | 0, o.frozen ? 1 : 0].join('|');
+    const base = o.kit || KITS[o.team] || KITS.red;
+    const kitKey = [base.j, base.k, base.p, base.w, base.pattern, base.gk || ''].join(',');
+    const key = [kitKey, o.pos, look.skin, look.hair, look.style, o.frame | 0, o.frozen ? 1 : 0].join('|');
     let c = cache.get(key);
     if (c) return c;
-    const kit = Object.assign({}, KITS[o.team] || KITS.red, o.pos === 'GK' ? GK_OVERRIDE : {});
+    // Keepers wear the kit's keeper colour with dark trim and gloves.
+    const kit = Object.assign({ b: '#1a1a1a' }, base, o.pos === 'GK' ? Object.assign({}, GK_OVERRIDE, base.gk ? { j: base.gk } : {}) : {});
     let pal = { o: OUTLINE, e: EYE, s: look.skin, h: look.hair, j: kit.j, k: kit.k, p: kit.p, w: kit.w, b: kit.b, g: kit.gloves || '#fff' };
     if (o.frozen) for (const k of Object.keys(pal)) pal[k] = mix(pal[k], '#bfe6ff', k === 'o' ? 0.3 : 0.65);
     const grid = buildGrid(look.style, kit.pattern, o.pos === 'GK', o.frame | 0);

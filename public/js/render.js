@@ -29,9 +29,12 @@
       this.pitchCache = null;
       this.goalWidth = 180;
       this.facing = new Map();   // player id -> facing left?
+      this.kits = null;          // { red, blue } resolved national kits
+      this.teamColors = { red: COLORS.red, blue: COLORS.blue };
     }
 
     setGoalWidth(gw) { if (gw !== this.goalWidth) { this.goalWidth = gw; this.pitchCache = null; } }
+    setTeams(kits, colors) { this.kits = kits; this.teamColors = colors; this.pitchCache = null; }
 
     // ---- Particles ---------------------------------------------------------
     burst(x, y, { n = 10, color = '#fff', speed = 180, life = 0.5, size = 3, gravity = 0 } = {}) {
@@ -113,7 +116,7 @@
         for (let x = 0; x <= gd; x += 10) { ctx.beginPath(); ctx.moveTo((side < 0 ? -x : W + x), H / 2 - gh); ctx.lineTo((side < 0 ? -x : W + x), H / 2 + gh); ctx.stroke(); }
         for (let y = -gh; y <= gh; y += 10) { ctx.beginPath(); ctx.moveTo(side < 0 ? -gd : W, H / 2 + y); ctx.lineTo(side < 0 ? 0 : W + gd, H / 2 + y); ctx.stroke(); }
         // team colour strip on the back of the net
-        ctx.fillStyle = side < 0 ? COLORS.red : COLORS.blue;
+        ctx.fillStyle = side < 0 ? this.teamColors.red : this.teamColors.blue;
         ctx.fillRect(side < 0 ? -gd - 6 : W + gd, H / 2 - gh, 6, gh * 2);
         // posts
         for (const py of [H / 2 - gh, H / 2 + gh]) {
@@ -213,7 +216,7 @@
 
       const scale = (p.r * 2 * 1.35) / Sprites.H;
       const feetY = p.y + p.r * 0.9;
-      Sprites.draw(ctx, { team, pos, name: p.name, frame, frozen: !!(fx & FX.frozen) }, p.x, feetY, scale, flip);
+      Sprites.draw(ctx, { team, pos, name: p.name, frame, frozen: !!(fx & FX.frozen), kit: this.kits ? this.kits[team] : null }, p.x, feetY, scale, flip);
       const top = feetY - Sprites.H * scale;
 
       // Name tag
@@ -224,7 +227,7 @@
       ctx.beginPath(); ctx.roundRect(p.x - tw / 2, top - 20, tw, 16, 6); ctx.fill();
       ctx.fillStyle = isMe ? '#ffd166' : '#fff'; ctx.fillText(label, p.x, top - 8);
       // Position badge
-      ctx.fillStyle = team === 'red' ? COLORS.red : COLORS.blue;
+      ctx.fillStyle = this.teamColors[team];
       ctx.beginPath(); ctx.roundRect(p.x - tw / 2 - 18, top - 20, 16, 16, 4); ctx.fill();
       ctx.fillStyle = '#fff'; ctx.font = 'bold 10px system-ui, sans-serif'; ctx.textBaseline = 'middle';
       ctx.fillText(pos === 'GK' ? 'G' : pos === 'DEF' ? 'D' : 'F', p.x - tw / 2 - 10, top - 12);

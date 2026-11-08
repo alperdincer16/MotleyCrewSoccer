@@ -71,7 +71,7 @@
 
   net.on('matchStart', (msg) => {
     ui.showScreen('game');
-    game.start(msg.rules);
+    game.start(msg.rules, msg.sides);
     if (ui.room) game.setRoom(ui.room);
   });
 
@@ -79,7 +79,7 @@
 
   net.on('matchEnd', (res) => {
     ui.showScreen('game');
-    if (!game.active) { game.start(ui.room ? ui.room.rules : undefined); }
+    if (!game.active) { game.start(ui.room ? ui.room.rules : undefined, res.sides || (ui.room && ui.room.sides)); }
     game.showResults(res);
     if (ui.room) game.setRoom(Object.assign({}, ui.room, { status: 'ended' }));
   });

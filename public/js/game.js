@@ -8,6 +8,7 @@
   'use strict';
   const MCS = window.MCS;
   const Physics = window.Physics;
+  const Teams = window.Teams;
   const { FIELD } = MCS;
   const INPUT_RATE = 30;
   const FX = { speed: 1, rocket: 2, frozen: 4, shrink: 8, magnet: 16, shield: 32 };
@@ -59,8 +60,9 @@
     }
 
     // ---- Lifecycle ----------------------------------------------------------
-    start(rules) {
+    start(rules, sides) {
       this.rules = MCS.sanitizeRules(rules);
+      this.setSides(sides || (this.room && this.room.sides));
       this.renderer.setGoalWidth(this.rules.goalWidth);
       this.renderer.particles = [];
       this.snaps = []; this.inputHistory = []; this.replay = null; this.lastPred = null; this.clock.offset = null;
@@ -72,6 +74,17 @@
       if (!this.raf) this.loop(performance.now());
       if (this.isTouch()) this.el.mobile.classList.remove('hidden');
     }
+    setSides(sides) {
+      this.sides = Teams.sanitizeSides(sides);
+      this.kits = Teams.resolveKits(this.sides.red, this.sides.blue);
+      this.teamColors = { red: Teams.sideColor(this.kits.red), blue: Teams.sideColor(this.kits.blue) };
+      this.traits = { red: Teams.traitsFor(this.sides.red), blue: Teams.traitsFor(this.sides.blue) };
+      this.renderer.setTeams(this.kits, this.teamColors);
+      document.documentElement.style.setProperty('--teamRed', this.teamColors.red);
+      document.documentElement.style.setProperty('--teamBlue', this.teamColors.blue);
+    }
+    nationName(team) { const n = Teams.get(this.sides ? this.sides[team] : null); return n ? n.name : team; }
+
     stop() {
       this.active = false;
       if (this.raf) { cancelAnimationFrame(this.raf); this.raf = null; }
@@ -101,9 +114,10 @@
         if (pid) continue;
         const b = document.createElement('button');
         const { team, pos } = MCS.parseSlot(slot);
-        if (window.spriteAvatar) b.appendChild(window.spriteAvatar(team, pos, `${team.toUpperCase()} ${pos} bot`, 2));
-        b.appendChild(document.createTextNode(`${team.toUpperCase()} ${pos}`));
-        b.style.borderColor = team === 'red' ? 'var(--red)' : 'var(--blue)';
+        const nation = Teams.get(this.room.sides && this.room.sides[team]);
+        if (window.spriteAvatar) b.appendChild(window.spriteAvatar(team, pos, Teams.botName(this.room.sides && this.room.sides[team], team, pos), 2, this.kits ? this.kits[team] : null));
+        b.appendChild(document.createTextNode(`${nation ? nation.code : team.toUpperCase()} ${pos}`));
+        b.style.borderColor = team === 'red' ? 'var(--teamRed)' : 'var(--teamBlue)';
         b.onclick = () => this.net.send('pickSlot', { slot });
         this.el.spectatorSlots.appendChild(b);
       }
@@ -209,7 +223,7 @@
         const start = tickLocal + (k - 1) * tickMs;
         if (start + tickMs > horizon) break;
         const input = this.inputAt(start - owl);
-        Physics.integratePlayer(body, input, this.rules, SIM_DT, st, snap.ball);
+        Physics.integratePlayer(body, input, this.rules, SIM_DT, st, snap.ball, this.traits ? this.traits[team] : null);
         Physics.confinePlayer(body, team, snap.state, snap.ko, gh);
       }
       return body;
@@ -286,13 +300,13 @@
             break;
           }
           case 'goal': {
-            const color = e.team === 'red' ? Renderer.COLORS.red : Renderer.COLORS.blue;
+            const color = this.teamColors ? this.teamColors[e.team] : (e.team === 'red' ? Renderer.COLORS.red : Renderer.COLORS.blue);
             R.confetti(e.x, e.y, color); R.kickShake(18);
             this.audio.goal(myTeam ? e.team === myTeam : true);
             const who = e.scorer ? this.playerName(e.scorer) : 'Nobody';
             let sub = e.ownGoal ? `Own goal by ${who}` : `${who}${e.assist ? ' · assist ' + this.playerName(e.assist) : ''}`;
             if (e.speed > 850) sub += ' · ROCKET!';
-            this.showBanner(e.sd ? 'GOLDEN GOAL!' : 'GOAL!', sub, e.team, 2600);
+            this.showBanner(e.sd ? 'GOLDEN GOAL!' : `GOAL! ${this.nationName(e.team).toUpperCase()}`, sub, e.team, 2600);
             this.startReplay(now);
             break;
           }
@@ -328,14 +342,15 @@
     hideBanner() { this.el.banner.classList.add('hidden'); }
     toast(text, team) {
       const t = document.createElement('div'); t.className = 'toast'; t.textContent = text;
-      if (team) t.style.borderColor = team === 'red' ? 'var(--red)' : 'var(--blue)';
+      if (team) t.style.borderColor = team === 'red' ? 'var(--teamRed)' : 'var(--teamBlue)';
       this.el.toasts.appendChild(t);
       setTimeout(() => t.remove(), 3500);
     }
 
     showResults(res) {
       const myTeam = this.mySlot ? MCS.parseSlot(this.mySlot).team : null;
-      let title = res.winner === 'draw' ? 'Draw' : `${res.winner === 'red' ? 'Red' : 'Blue'} wins`;
+      if (res.sides) this.setSides(res.sides);
+      let title = res.winner === 'draw' ? 'Draw' : `${this.nationName(res.winner)} wins`;
       if (myTeam) title = res.winner === 'draw' ? 'Draw' : res.winner === myTeam ? 'Victory!' : 'Defeat';
       this.el.resultsTitle.textContent = title + (res.suddenDeath ? ' (sudden death)' : '');
       this.el.resRed.textContent = res.score.red; this.el.resBlue.textContent = res.score.blue;
