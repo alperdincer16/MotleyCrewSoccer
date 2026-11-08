@@ -52,6 +52,8 @@ recorded here, in the header comment of each source file, and in the
 | T-32 | Tournament mode: 8-nation knockout, cooperative simulation of other fixtures, penalties, bracket and trophy UI | Priya Natarajan / Mei Lin / Sam Okafor | Done |
 | T-33 | Goal highlight GIF export with follow-cam and in-browser GIF encoder | Tomasz Nowak / Sam Okafor | Done |
 | T-34 | Tests for T-27 to T-33 | Rosa Vidal | Done |
+| T-35 | UI polish pass: shared tokens for spacing, radii and type; consistent buttons, inputs and selects; lobby, create dialog, pre-match room, HUD, results and player card tidied; pitch fits the window; phone layouts; readable team colours on dark UI | Sam Okafor | Done |
+| T-36 | Real soccer ball: shaded truncated-icosahedron pattern that rolls in 3D with the ball's movement and spins on curved shots (rendering only) | Tomasz Nowak | Done |
 
 ## Working agreements
 

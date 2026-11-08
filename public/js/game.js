@@ -6,6 +6,21 @@
  */
 (function () {
   'use strict';
+
+  /**
+   * Kit colours drive the DOM accents (scores, names, board borders). Dark kits
+   * such as navy vanish on the dark UI, so lift them toward white until they
+   * read clearly. The canvas keeps the true kit colour. (T-35, Sam Okafor)
+   */
+  function readableTeamColor(hex) {
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+    if (!m) return hex;
+    let rgb = [0, 2, 4].map(i => parseInt(m[1].slice(i, i + 2), 16));
+    const lum = (c) => { const [r, g, b] = c.map(v => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
+    for (let k = 0; k < 12 && lum(rgb) < 0.16; k++) rgb = rgb.map(v => Math.round(v + (255 - v) * 0.15));
+    return '#' + rgb.map(v => v.toString(16).padStart(2, '0')).join('');
+  }
+  window.readableTeamColor = readableTeamColor;
   const MCS = window.MCS;
   const Physics = window.Physics;
   const Teams = window.Teams;
@@ -92,8 +107,8 @@
       this.teamColors = { red: Teams.sideColor(this.kits.red), blue: Teams.sideColor(this.kits.blue) };
       this.traits = { red: Teams.traitsFor(this.sides.red), blue: Teams.traitsFor(this.sides.blue) };
       this.renderer.setTeams(this.kits, this.teamColors, { red: this.nationName('red').toUpperCase(), blue: this.nationName('blue').toUpperCase() });
-      document.documentElement.style.setProperty('--teamRed', this.teamColors.red);
-      document.documentElement.style.setProperty('--teamBlue', this.teamColors.blue);
+      document.documentElement.style.setProperty('--teamRed', readableTeamColor(this.teamColors.red));
+      document.documentElement.style.setProperty('--teamBlue', readableTeamColor(this.teamColors.blue));
       this.updateSkillLabel();
     }
     updateSkillLabel() {
@@ -506,11 +521,13 @@
       if (best && rating(best) <= 0) best = null;
       for (const s of res.stats) {
         const tr = document.createElement('tr');
-        const name = document.createElement('td'); name.className = s.team;
-        name.textContent = `${s.pos} ${s.bot ? '🤖 ' : ''}${s.name}${s === best ? ' ⭐' : ''}`;
+        const name = document.createElement('td'); name.className = 'who ' + s.team;
+        const pos = document.createElement('span'); pos.className = 'pos-tag'; pos.textContent = s.pos;
+        name.appendChild(pos);
+        name.appendChild(document.createTextNode(`${s.bot ? '🤖 ' : ''}${s.name}${s === best ? ' ⭐' : ''}`));
         tr.appendChild(name);
         for (const v of [s.stats.goals + (s.stats.ownGoals ? ` (${s.stats.ownGoals} OG)` : ''), s.stats.assists, s.stats.kicks, s.stats.pickups]) {
-          const td = document.createElement('td'); td.textContent = v; tr.appendChild(td);
+          const td = document.createElement('td'); td.className = 'num'; td.textContent = v; tr.appendChild(td);
         }
         tb.appendChild(tr);
       }
