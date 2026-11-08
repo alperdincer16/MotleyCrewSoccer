@@ -40,6 +40,7 @@ boosts. Any slot a human does not take is played by a bot.
 | Dash enabled | on | toggle |
 | Boost pickups | on | toggle |
 | Pickup spawn interval | 8 s | 3–30 s |
+| Bot skill | 1.0× | 0.5–1.5× |
 | Enabled boosts | all | per-boost toggles |
 
 ## Boosts (pickups)
@@ -73,3 +74,43 @@ person always looks the same; goalkeepers wear dark trim and gloves. Sprites
 have stand, two walk and one kick frame, flip to face their direction of
 travel, and turn icy blue while frozen. The same sprites appear as avatars on
 the pre-match slot cards and the spectator take-over bar.
+
+## Netcode
+
+* The server simulates at 60 Hz and sends 30 snapshots a second. The ball is
+  sub-stepped inside a tick whenever it would move more than three quarters
+  of its radius, so a full-power shot cannot pass through a post or a player.
+* Remote players and the ball are rendered behind the newest snapshot by an
+  adaptive delay (60–160 ms, from measured snapshot jitter) with linear
+  interpolation and a short extrapolation if a snapshot is late.
+* The local player is predicted. `shared/physics.js` is the same movement
+  code the server runs. The client maps snapshot tick numbers onto its own
+  clock with a min-filter, then replays its input history tick by tick on the
+  server's grid up to the moment its current input will land. When a new
+  snapshot arrives, the old and new predictions are compared for the same
+  instant and the difference decays away as a smoothing offset, so
+  corrections never snap. Press `P` in a match to toggle prediction.
+* Human kick presses are buffered for 150 ms so a tap just before contact
+  still connects; bots are evaluated every tick and get no buffer.
+* Inputs are rate-limited per connection; aim coordinates are clamped to the
+  arena.
+
+## Bots
+
+* Bots re-plan every 100–140 ms (scaled by the host's Bot skill rule) but the
+  decision to kick is re-checked every tick with the real kick geometry: a
+  kick that would cross the bot's own goal line is never taken.
+* Forwards shoot at the far post, or pass when the shooting lane is blocked
+  by an opponent and a team-mate is free; defenders clear or pass; keepers
+  read slow shots well and are late on fast ones, hold the line against
+  fast balls and only rush slow ones from the goal side.
+* Bots grab nearby pickups when the ball is not urgent and always shoot
+  when holding a Rocket Kick.
+
+## Presentation
+
+* Goals trigger confetti, camera shake, a goal banner with scorer and
+  assist, and an instant replay of the last 1.4 s played back during the
+  kickoff pause with letterbox bars and a REPLAY tag.
+* The clock turns red and pulses in the last ten seconds and ticks in the
+  last five. Sudden-death winners get a GOLDEN GOAL banner.

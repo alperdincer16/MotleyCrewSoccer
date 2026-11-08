@@ -10,7 +10,7 @@ seat a human doesn't take.
   are bots. The host edits the rules and chooses which boosts are in the pool.
 * **Live join**: open a game in progress and take over any bot slot.
 * **Rules** are all host-editable: match length, goal limit, sudden death,
-  mercy rule, goal width, speed, kick power, ball physics, dash, pickups.
+  mercy rule, goal width, speed, kick power, ball physics, dash, pickups, bot skill.
 
 See [docs/TEAM.md](docs/TEAM.md) for the development team and task board and
 [docs/DESIGN.md](docs/DESIGN.md) for the design overview.
@@ -36,6 +36,7 @@ same network / a deployed host) to play online. Only one dependency (`ws`).
 | Dash | `Shift` / `C` |
 | Chat | `Enter` |
 | Mute | `M` |
+| Toggle prediction | `P` |
 
 ## Boosts
 
@@ -45,6 +46,7 @@ same network / a deployed host) to play online. Only one dependency (`ws`).
 
 ```
 shared/rules.js      constants, rule schema, boost catalogue (server + browser)
+shared/physics.js    player movement + arena collision, shared for client prediction
 server/index.js      static files + WebSocket endpoint
 server/lobby.js      room registry: list / create / join / invite
 server/room.js       room state machine, 60 Hz loop, 30 Hz snapshots
@@ -55,4 +57,6 @@ test/                node:test suites (rules, match engine, room flow, soak)
 ```
 
 The server is authoritative: clients only send intent (direction, kick, dash,
-aim). Clients render 100 ms behind the newest snapshot with interpolation.
+aim). Remote players and the ball are interpolated behind the newest snapshot
+with an adaptive delay; the local player is predicted with the shared physics
+code and reconciled smoothly against each snapshot. See docs/DESIGN.md.
