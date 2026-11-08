@@ -69,7 +69,7 @@ test('shared integratePlayer is deterministic and matches the server', () => {
   for (let i = 0; i < 30; i++) {
     m.setInput('red:FWD', { right: true });
     m.step(DT);
-    Physics.integratePlayer(twin, { right: true }, m.rules, DT, st, m.ball);
+    Physics.integratePlayer(twin, { right: true }, m.rules, DT, st, m.ball, m.traits.red);
     Physics.confinePlayer(twin, 'red', m.state, m.kickoffTeam, m.goalHalfWidth());
   }
   assert.ok(Math.abs(p.x - twin.x) < 1e-6 && Math.abs(p.y - twin.y) < 1e-6, 'client twin tracks the server exactly');

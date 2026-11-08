@@ -114,3 +114,38 @@ the pre-match slot cards and the spectator take-over bar.
   kickoff pause with letterbox bars and a REPLAY tag.
 * The clock turns red and pulses in the last ten seconds and ticks in the
   last five. Sudden-death winners get a GOLDEN GOAL banner.
+
+## National teams
+
+The host picks a nation for each side in the pre-match room (default: a random
+pair). Each nation has a home kit, an alternate kit (worn by the second side
+when the two home jerseys are too similar), a keeper colour, three small
+trait modifiers that apply to every player on the team including humans, and a
+bot play style. Traits are capped at ±8% so no nation is strictly better.
+
+| Nation | Style | How the bots play | Speed / Kick / Dash recharge |
+|--------|-------|-------------------|------------------------------|
+| 🇧🇷 Brazil | Joga Bonito | Quick feet, dribbles at defenders, shoots from close range. | +6% / -4% / +0% |
+| 🇦🇷 Argentina | Garra | Relentless pressing and hard tackles; wins the ball high up the pitch. | +3% / +0% / +18% |
+| 🇩🇪 Germany | Die Maschine | Disciplined shape and patient passing; strikes with power when the lane opens. | -2% / +6% / +0% |
+| 🇫🇷 France | Contre-attaque | Sits deep, then breaks at speed; forwards love the counter. | +4% / +2% / +11% |
+| 🇮🇹 Italy | Catenaccio | Defends the box as a unit, keeper comes for everything, scores on the break. | -3% / +5% / +0% |
+| 🇪🇸 Spain | Tiki-taka | Passes, passes, passes; only shoots when the chance is clear. | +0% / -5% / -9% |
+| 🏴󠁧󠁢󠁥󠁮󠁧󠁿 England | Route One | Long balls forward and thunderous shots from anywhere. | -2% / +8% / +0% |
+| 🇳🇱 Netherlands | Total Football | Everyone attacks, everyone defends; the defender pushes right up. | +2% / +0% / +0% |
+| 🇵🇹 Portugal | Flair | Shoots from distance, dashes into space, a little greedy. | +2% / +4% / +11% |
+| 🇯🇵 Japan | Hassle | Swarms the ball carrier and moves it on quickly. | +5% / -4% / +5% |
+| 🇺🇸 USA | Athletic | Fit and fearless: dashes recover fastest in the game. | +2% / +0% / +33% |
+| 🇳🇬 Nigeria | Power | Fast and physical; hits the ball harder than anyone when it sits up. | +3% / +6% / +0% |
+| 🇭🇷 Croatia | Midfield control | Keeps the ball moving and pushes the defender up to support. | +0% / +2% / +0% |
+| 🇲🇽 Mexico | Quick feet | Nimble and busy; wins second balls and plays one-twos. | +5% / -5% / +5% |
+| 🇧🇪 Belgium | Balanced | No weaknesses, no gimmicks: a textbook side. | +0% / +0% / +0% |
+| 🇹🇷 Türkiye | Ateş | All heart: presses hard, shoots early, dashes into every duel. | +3% / +3% / +11% |
+
+Bot play style knobs: `press` (how far from goal the defender engages, and
+whether forwards hunt in the opponent half), `passing` (willingness to pass
+instead of shoot, and support distance), `shootRange` (distance from goal at
+which forwards shoot rather than look for a pass), `defLine` (how high the
+defender holds), `gkRush` (how far and how fast a ball the keeper will come
+for), `dash` (how often bots dash into duels) and `flair` (shot placement
+variance).

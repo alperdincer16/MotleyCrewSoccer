@@ -8,6 +8,10 @@ seat a human doesn't take.
   password, and share an invite link that skips the password.
 * **Pre-match** page: pick Red or Blue and GK / DEF / FWD. Unclaimed positions
   are bots. The host edits the rules and chooses which boosts are in the pool.
+* **National teams**: 16 nations with authentic-looking pixel kits, keeper
+  kits and distinct play styles (Brazil dribbles, Spain passes, England goes
+  long, Italy parks the bus). The host picks both sides; clashing kits switch
+  to the alternate automatically.
 * **Live join**: open a game in progress and take over any bot slot.
 * **Rules** are all host-editable: match length, goal limit, sudden death,
   mercy rule, goal width, speed, kick power, ball physics, dash, pickups, bot skill.
@@ -47,6 +51,7 @@ same network / a deployed host) to play online. Only one dependency (`ws`).
 ```
 shared/rules.js      constants, rule schema, boost catalogue (server + browser)
 shared/physics.js    player movement + arena collision, shared for client prediction
+shared/teams.js      national teams: kits, traits, bot play styles
 server/index.js      static files + WebSocket endpoint
 server/lobby.js      room registry: list / create / join / invite
 server/room.js       room state machine, 60 Hz loop, 30 Hz snapshots
