@@ -284,3 +284,8 @@ details .rules-grid { margin-top: 12px; }
 @keyframes cupBounce { from { transform: translateY(0) rotate(-4deg); } to { transform: translateY(-8px) rotate(4deg); } }
 .tour-line { text-align: center; font-weight: 800; margin: 4px 0 8px; }
 .tour-line.won { color: var(--ok); } .tour-line.lost { color: var(--red); }
+
+/* ---- T-33 highlights ---- */
+.highlights h3 { margin: 6px 0; }
+#highlightList { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.hl { display: flex; justify-content: space-between; align-items: center; gap: 10px; background: var(--bg2); border-radius: 8px; padding: 5px 10px; font-size: 13px; }

@@ -44,6 +44,7 @@
       this.replay = null;           // { snaps, start, duration, span }
       this.celebration = null;
       this.looks = {};
+      this.highlights = window.Highlights ? new Highlights(this) : null;
       this.el = {
         scoreRed: document.getElementById('scoreRed'), scoreBlue: document.getElementById('scoreBlue'),
         clock: document.getElementById('clock'), clockTag: document.getElementById('clockTag'),
@@ -75,6 +76,7 @@
       this.renderer.particles = [];
       this.el.chaos.classList.add('hidden'); this.el.wind.classList.add('hidden');
       this.snaps = []; this.inputHistory = []; this.replay = null; this.lastPred = null; this.clock.offset = null;
+      if (this.highlights) this.highlights.reset();
       this.predErr = { x: 0, y: 0 };
       this.active = true;
       if (this.renderer.crowd) this.renderer.crowd.reset();
@@ -168,7 +170,7 @@
       else this.clock.offset += 0.25;   // creep upward so a worsening link is re-learned
 
       this.snaps.push({ recv: now, data: snap });
-      if (this.snaps.length > 90) this.snaps.shift();
+      if (this.snaps.length > 150) this.snaps.shift();
       this.handleEvents(snap, now);
       this.setScore(snap.score.red, snap.score.blue);
       let tag = '';
@@ -388,6 +390,7 @@
             this.showBanner(e.sd ? 'GOLDEN GOAL!' : `GOAL! ${this.nationName(e.team).toUpperCase()}`, sub, e.team, 2600);
             this.startReplay(now);
             if (e.scorer && !e.ownGoal) this.startCelebration(e.scorer, now);
+            if (this.highlights) this.highlights.capture(e, now);
             break;
           }
           case 'end': this.audio.end(); this.replay = null; if (R.crowd) R.crowd.end(e.winner); this.audio.cheer(e.winner === 'draw' ? 0.5 : 0.9); break;
