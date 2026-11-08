@@ -10,7 +10,10 @@
   const audio = new GameAudio();
   const ui = new UI(net);
   const game = new Game({ canvas: $('pitch'), net, audio, ui });
-  window.app = { net, ui, game, audio };
+  const card = new PlayerCard(net, audio);
+  window.app = { net, ui, game, audio, card };
+  net.on('profile', (msg) => card.setProfile(msg.profile));
+  net.on('matchXp', (rep) => card.showXp(rep));
 
   // Name field
   const nameInput = $('nameInput');
@@ -70,6 +73,7 @@
   });
 
   net.on('matchStart', (msg) => {
+    card.hideXp();
     ui.showScreen('game');
     game.start(msg.rules, msg.sides);
     if (ui.room) game.setRoom(ui.room);

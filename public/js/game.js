@@ -42,6 +42,8 @@
       this.predictionEnabled = localStorage.getItem('mcs.predict') !== '0';
       // Replay state
       this.replay = null;           // { snaps, start, duration, span }
+      this.celebration = null;
+      this.looks = {};
       this.el = {
         scoreRed: document.getElementById('scoreRed'), scoreBlue: document.getElementById('scoreBlue'),
         clock: document.getElementById('clock'), clockTag: document.getElementById('clockTag'),
@@ -117,6 +119,10 @@
       const newSlot = me ? me.slot : null;
       if (newSlot !== this.mySlot) { this.lastPred = null; this.predErr = { x: 0, y: 0 }; this.inputHistory = []; }
       this.mySlot = newSlot;
+      // Cosmetics of the humans in each slot (bots use their name-derived look).
+      this.looks = {};
+      if (room) for (const p of room.players) if (p.slot && p.look) this.looks[p.slot] = p.look;
+      this.renderer.looks = this.looks;
       if (this.sides) this.updateSkillLabel();
       this.updateSpectatorBar();
       if (room && room.status === 'ended') {
@@ -381,12 +387,27 @@
             if (e.points > 1) sub += ' · DOUBLE POINTS';
             this.showBanner(e.sd ? 'GOLDEN GOAL!' : `GOAL! ${this.nationName(e.team).toUpperCase()}`, sub, e.team, 2600);
             this.startReplay(now);
+            if (e.scorer && !e.ownGoal) this.startCelebration(e.scorer, now);
             break;
           }
           case 'end': this.audio.end(); this.replay = null; if (R.crowd) R.crowd.end(e.winner); this.audio.cheer(e.winner === 'draw' ? 0.5 : 0.9); break;
         }
       }
     }
+    /** Player-cam celebration card for the scorer, shown during the replay. */
+    startCelebration(slot, now) {
+      const { team, pos } = MCS.parseSlot(slot);
+      const look = this.looks[slot] || null;
+      const name = this.playerName(slot);
+      this.celebration = {
+        slot, team, pos, name, look, kit: this.kits ? this.kits[team] : null,
+        color: this.teamColors ? this.teamColors[team] : '#ffd166', nation: this.nationName(team),
+        kind: Sprites.celebrationFor(name, look), start: now + 300,
+        duration: Math.max(1.6, this.rules.kickoffPause - 0.2),
+      };
+      this.audio.celebrate();
+    }
+
     playerName(slot) {
       const s = this.snaps[this.snaps.length - 1];
       const p = s && s.data.players.find(p => p.id === slot);
@@ -647,7 +668,13 @@
         } else this.lastPred = null;
       }
       this.myView = view && this.mySlot ? view.players.find(p => p.id === this.mySlot) : null;
-      this.renderer.draw(view, { mySlot: this.mySlot, dt, replay: !!(view && view._replay) });
+      let celebration = null;
+      if (this.celebration) {
+        const t = (now - this.celebration.start) / 1000;
+        if (t > this.celebration.duration) this.celebration = null;
+        else if (t >= 0) celebration = Object.assign({}, this.celebration, { t });
+      }
+      this.renderer.draw(view, { mySlot: this.mySlot, dt, replay: !!(view && view._replay), celebration });
       if (this.renderer.crowd) this.audio.setCrowd(this.renderer.crowd.level());
       if (this.el.netInfo && (now - (this._netInfoAt || 0)) > 500) {
         this._netInfoAt = now;

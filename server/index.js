@@ -14,6 +14,7 @@ const crypto = require('crypto');
 const { WebSocketServer } = require('ws');
 
 const { Lobby } = require('./lobby');
+const { Profiles } = require('./profiles');
 const { C2S, S2C } = require('./protocol');
 
 const PORT = Number(process.env.PORT) || 3000;
@@ -74,6 +75,8 @@ class Client {
   send(obj) { this.sendRaw(JSON.stringify(obj)); }
   sendRaw(data) { if (this.ws.readyState === 1) this.ws.send(data); }
   error(code, message) { this.send({ type: S2C.ERROR, code, message }); }
+  sendProfile() { if (this.profile) this.send({ type: S2C.PROFILE, profile: this.lobby.profiles.view(this.profile) }); }
+  get look() { return this.profile ? this.profile.look : null; }
 
   handle(msg) {
     if (!msg || typeof msg.type !== 'string') return;
@@ -86,6 +89,7 @@ class Client {
       case C2S.SET_NAME: {
         this.name = cleanName(msg.name, this.name);
         tokens.set(this.token, { id: this.id, name: this.name });
+        this.lobby.profiles.get(this.token, this.name);
         this.send({ type: S2C.WELCOME, id: this.id, name: this.name, token: this.token });
         if (room) room.rename(this, this.name);
         return;
@@ -104,18 +108,32 @@ class Client {
       case C2S.REMATCH: return room && room.rematch(this);
       case C2S.INPUT: return room && room.handleInput(this, msg);
       case C2S.EMOTE: return room && room.emote(this, msg.id);
+      case C2S.SET_LOOK: {
+        const p = this.lobby.profiles.setLook(this.token, msg.look);
+        if (p) this.sendProfile();
+        if (room) room.refreshLook(this);
+        return;
+      }
+      case C2S.SET_MODE: return room && room.setMode(this, msg.mode);
       case C2S.CHAT: return room && typeof msg.text === 'string' && msg.text.trim() && room.chat(this, msg.text.trim());
       default: return this.error('unknown', `Unknown message ${msg.type}`);
     }
   }
 
   hello(msg) {
-    const known = msg.token && tokens.get(String(msg.token));
-    if (known) { this.id = known.id; this.token = String(msg.token); }
-    else { this.id = 'p' + (nextClientNum++) + crypto.randomBytes(2).toString('hex'); this.token = crypto.randomBytes(12).toString('hex'); }
+    const tok = typeof msg.token === 'string' ? msg.token.slice(0, 64) : null;
+    const known = tok && tokens.get(tok);
+    if (known) { this.id = known.id; this.token = tok; }
+    else {
+      this.id = 'p' + (nextClientNum++) + crypto.randomBytes(2).toString('hex');
+      // A token we have a saved player card for (e.g. after a restart) is kept.
+      this.token = tok && this.lobby.profiles.has(tok) ? tok : crypto.randomBytes(12).toString('hex');
+    }
     this.name = cleanName(msg.name, known ? known.name : null) || `Player ${nextClientNum}`;
     tokens.set(this.token, { id: this.id, name: this.name });
+    this.profile = this.lobby.profiles.get(this.token, this.name);
     this.send({ type: S2C.WELCOME, id: this.id, name: this.name, token: this.token });
+    this.sendProfile();
     this.lobby.addClient(this);
     // Reconnect into a room we were still a member of (grace window).
     for (const room of this.lobby.rooms.values()) {
@@ -131,8 +149,10 @@ function cleanName(name, fallback) {
 }
 
 // ---- Boot ---------------------------------------------------------------------
-function createServer() {
+function createServer(opts = {}) {
   const lobby = new Lobby();
+  const dataFile = opts.profilesFile !== undefined ? opts.profilesFile : path.join(process.env.MCS_DATA_DIR || path.join(ROOT, 'data'), 'profiles.json');
+  lobby.profiles = new Profiles(dataFile);
   const server = http.createServer(serveStatic);
   const wss = new WebSocketServer({ server, maxPayload: 16 * 1024 });
 

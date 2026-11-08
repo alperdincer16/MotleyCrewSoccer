@@ -14,6 +14,7 @@
 <header id="topbar">
   <div class="brand"><span class="ball">⚽</span> Motley Crew Soccer</div>
   <div class="me">
+    <button id="cardChip" class="card-chip" title="Your player card"><span id="cardChipLevel">Lv 1</span><span class="chip-bar"><span id="cardChipFill"></span></span><span class="chip-label">Player card</span></button>
     <label>You are <input id="nameInput" maxlength="16" spellcheck="false" autocomplete="off"></label>
     <span id="connDot" class="dot" title="connection"></span>
   </div>
@@ -83,6 +84,24 @@
       <button type="submit" class="primary">Create</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="cardDialog" class="card-dialog">
+  <div class="card-layout">
+    <div class="card-left">
+      <canvas id="cardPreview" width="220" height="230"></canvas>
+      <div id="cardName" class="card-name"></div>
+      <div id="cardTier" class="tier"></div>
+      <div class="xp-bar"><div id="cardXpFill" class="xp-fill"></div></div>
+      <div id="cardXpText" class="muted small-note"></div>
+      <div id="cardStats" class="card-stats"></div>
+    </div>
+    <div class="card-right">
+      <div class="section-head" style="margin-top:0"><h2>Your player card</h2><button type="button" class="ghost small" id="cardClose">Close</button></div>
+      <p class="muted small-note">Earn XP for playing, winning, scoring, assisting and saving. New levels unlock hairstyles, colours, boots and goal celebrations. Your celebration plays on the player cam when you score.</p>
+      <div id="cardPickers"></div>
+    </div>
+  </div>
 </dialog>
 
 <dialog id="passwordDialog">
@@ -187,6 +206,7 @@
       <div class="results-card">
         <h1 id="resultsTitle">Full time</h1>
         <div class="results-score"><span class="red" id="resRed">0</span> – <span class="blue" id="resBlue">0</span></div>
+        <div id="xpPanel" class="xp-panel hidden"></div>
         <table id="statsTable"><thead><tr><th>Player</th><th>G</th><th>A</th><th>Kicks</th><th>Boosts</th></tr></thead><tbody></tbody></table>
         <div class="row end">
           <button id="btnResultsLeave" class="ghost">Leave</button>
@@ -203,13 +223,16 @@
 <script src="/shared/rules.js"></script>
 <script src="/shared/physics.js"></script>
 <script src="/shared/teams.js"></script>
+<script src="/shared/progress.js"></script>
 <script src="/js/net.js"></script>
 <script src="/js/audio.js"></script>
 <script src="/js/sprites.js"></script>
 <script src="/js/crowd.js"></script>
+<script src="/js/celebrate.js"></script>
 <script src="/js/render.js"></script>
 <script src="/js/game.js"></script>
 <script src="/js/ui.js"></script>
+<script src="/js/card.js"></script>
 <script src="/js/main.js"></script>
 </body>
 </html>

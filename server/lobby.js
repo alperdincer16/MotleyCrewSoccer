@@ -6,12 +6,14 @@
 
 const { Room } = require('./room');
 const { S2C } = require('./protocol');
+const { Profiles } = require('./profiles');
 
 class Lobby {
   constructor() {
     this.rooms = new Map();     // roomId -> Room
     this.clients = new Set();   // every connected client (for lobby broadcasts)
     this.broadcastPending = false;
+    this.profiles = new Profiles(null);   // memory-only; createServer swaps in a file-backed store
   }
 
   addClient(client) { this.clients.add(client); client.send({ type: S2C.LOBBY, games: this.list() }); }

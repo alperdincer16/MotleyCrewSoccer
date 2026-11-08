@@ -32,17 +32,28 @@
     return h >>> 0;
   }
 
-  /** Deterministic appearance for a name. */
-  function lookFor(name) {
+  /**
+   * Deterministic appearance for a name; `custom` (from the player card)
+   * overrides hairstyle, hair colour and boots. Skin always comes from the name.
+   */
+  function lookFor(name, custom) {
     const h = hash(String(name || 'player'));
+    const c = custom || {};
     return {
       skin: SKIN[h % SKIN.length],
-      hair: HAIR[(h >>> 4) % HAIR.length],
-      style: HAIR_STYLES[(h >>> 9) % HAIR_STYLES.length],
+      hair: c.hairColor || HAIR[(h >>> 4) % HAIR.length],
+      style: c.hair || HAIR_STYLES[(h >>> 9) % HAIR_STYLES.length],
+      boots: c.boots || null,
     };
   }
+  /** Celebration for a player: their chosen one, or a name-derived one for bots. */
+  function celebrationFor(name, custom) {
+    if (custom && custom.celebration) return custom.celebration;
+    const list = ['fistpump', 'dance', 'slide', 'airplane', 'robot', 'backflip'];
+    return list[(hash(String(name || 'player')) >>> 13) % list.length];
+  }
 
-  /** Build the character grid. frame: 0 stand, 1 walkA, 2 walkB, 3 kick. */
+  /** Build the character grid. frame: 0 stand, 1 walkA, 2 walkB, 3 kick, 4 arms up, 5 arms out. */
   function buildGrid(style, pattern, gk, frame) {
     const g = Array.from({ length: H }, () => Array(W).fill('.'));
     const put = (x, y, c) => { if (x >= 0 && x < W && y >= 0 && y < H) g[y][x] = c; };
@@ -99,6 +110,19 @@
       rect(8, 15, 2, 1, 's'); rect(9, 16, 2, 1, 'w'); rect(10, 16, 2, 1, 'w'); rect(11, 17, 2, 1, 'b');
       // Arm swings up for balance
       put(2, 11, 's'); put(1, 10, 's'); put(2, 12, 'j');
+    } else if (frame === 4) {
+      // Arms up: celebration
+      leg(4, 0); leg(8, 0);
+      rect(2, 11, 1, 2, '.'); rect(11, 11, 1, 2, '.');
+      rect(1, 6, 1, 3, 's'); rect(12, 6, 1, 3, 's'); put(2, 8, 'j'); put(11, 8, 'j');
+      put(2, 13, '.'); put(11, 13, '.');
+      if (gk) { put(1, 5, 'g'); put(12, 5, 'g'); }
+    } else if (frame === 5) {
+      // Arms out wide: airplane
+      leg(4, 0); leg(8, 1);
+      rect(2, 11, 1, 2, '.'); rect(11, 11, 1, 2, '.');
+      put(2, 13, '.'); put(11, 13, '.');
+      rect(0, 9, 2, 1, gk ? 'g' : 's'); rect(12, 9, 2, 1, gk ? 'g' : 's');
     } else { leg(4, 0); leg(8, 0); }
 
     // Auto outline: any empty cell touching a filled one.
@@ -124,15 +148,15 @@
    * @param {object} o { team, pos, name, frame, frozen }
    */
   function canvas(o) {
-    const look = lookFor(o.name);
+    const look = lookFor(o.name, o.look);
     const base = o.kit || KITS[o.team] || KITS.red;
     const kitKey = [base.j, base.k, base.p, base.w, base.pattern, base.gk || ''].join(',');
-    const key = [kitKey, o.pos, look.skin, look.hair, look.style, o.frame | 0, o.frozen ? 1 : 0].join('|');
+    const key = [kitKey, o.pos, look.skin, look.hair, look.style, look.boots || '', o.frame | 0, o.frozen ? 1 : 0].join('|');
     let c = cache.get(key);
     if (c) return c;
     // Keepers wear the kit's keeper colour with dark trim and gloves.
     const kit = Object.assign({ b: '#1a1a1a' }, base, o.pos === 'GK' ? Object.assign({}, GK_OVERRIDE, base.gk ? { j: base.gk } : {}) : {});
-    let pal = { o: OUTLINE, e: EYE, s: look.skin, h: look.hair, j: kit.j, k: kit.k, p: kit.p, w: kit.w, b: kit.b, g: kit.gloves || '#fff' };
+    let pal = { o: OUTLINE, e: EYE, s: look.skin, h: look.hair, j: kit.j, k: kit.k, p: kit.p, w: kit.w, b: look.boots || kit.b, g: kit.gloves || '#fff' };
     if (o.frozen) for (const k of Object.keys(pal)) pal[k] = mix(pal[k], '#bfe6ff', k === 'o' ? 0.3 : 0.65);
     const grid = buildGrid(look.style, kit.pattern, o.pos === 'GK', o.frame | 0);
     c = document.createElement('canvas'); c.width = W; c.height = H;
@@ -160,5 +184,5 @@
     ctx.restore();
   }
 
-  window.Sprites = { W, H, lookFor, canvas, draw, KITS };
+  window.Sprites = { W, H, lookFor, celebrationFor, canvas, draw, KITS };
 })();

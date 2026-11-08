@@ -274,6 +274,10 @@
       this.drawParticles();
       for (const p of sorted) this.drawBubbles(p);
       if (opts.replay) this.drawReplayOverlay();
+      if (opts.celebration && window.Celebrate) {
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        Celebrate.drawCard(ctx, opts.celebration, 24, this.canvas.height - 36 - 220);
+      }
     }
 
     drawWind() {

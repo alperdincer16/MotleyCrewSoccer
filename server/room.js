@@ -12,6 +12,7 @@ const Teams = require('../shared/teams');
 const Match = require('./game/match');
 const { BotBrain } = require('./game/ai');
 const { S2C } = require('./protocol');
+const Progress = require('../shared/progress');
 
 const TICK_DT = 1 / MCS.TICK_RATE;
 const SNAP_EVERY = Math.round(MCS.TICK_RATE / MCS.SNAPSHOT_RATE);
@@ -57,11 +58,11 @@ class Room {
     const existing = this.players.get(client.id);
     if (existing) {
       // Reconnect inside the grace window: restore the slot.
-      existing.connected = true; existing.client = client; existing.name = client.name;
+      existing.connected = true; existing.client = client; existing.name = client.name; existing.look = client.look || null;
       clearTimeout(existing.graceTimer);
-      if (existing.slot && this.match) this.match.setHuman(existing.slot, client.name);
+      if (existing.slot && this.match) this.match.setHuman(existing.slot, client.name, existing.look);
     } else {
-      this.players.set(client.id, { id: client.id, name: client.name, slot: null, ready: false, connected: true, client, joinedAt: Date.now() });
+      this.players.set(client.id, { id: client.id, name: client.name, slot: null, ready: false, connected: true, client, joinedAt: Date.now(), look: client.look || null, statBase: null });
     }
     client.room = this;
     this.broadcastRoom();
@@ -118,7 +119,11 @@ class Room {
     if (this.status === 'ended') return this.error(client, 'match_over', 'Wait for the rematch');
     if (p.slot) { this.slots[p.slot] = null; if (this.match) this.match.setBot(p.slot); }
     p.slot = slotId; this.slots[slotId] = client.id; p.ready = false;
-    if (this.match) this.match.setHuman(slotId, p.name);
+    if (this.match) {
+      this.match.setHuman(slotId, p.name, p.look);
+      // Taking over mid-match: only what you do from now on counts for your XP.
+      p.statBase = Object.assign({}, this.match.player(slotId).stats);
+    }
     this.broadcastRoom();
     this.lobby.broadcastLobby();
   }
@@ -173,7 +178,16 @@ class Room {
     const p = this.players.get(client.id);
     if (!p) return;
     p.name = name;
-    if (p.slot && this.match) this.match.setHuman(p.slot, name);
+    if (p.slot && this.match) this.match.setHuman(p.slot, name, p.look);
+    this.broadcastRoom();
+  }
+
+  /** The player changed cosmetics on their player card. */
+  refreshLook(client) {
+    const p = this.players.get(client.id);
+    if (!p) return;
+    p.look = client.look || null;
+    if (p.slot && this.match) this.match.setHuman(p.slot, p.name, p.look);
     this.broadcastRoom();
   }
 
@@ -184,13 +198,13 @@ class Room {
     const roster = {};
     for (const [slot, pid] of Object.entries(this.slots)) {
       const p = pid ? this.players.get(pid) : null;
-      roster[slot] = p ? { name: p.name, isBot: false } : { isBot: true };
+      roster[slot] = p ? { name: p.name, isBot: false, look: p.look } : { isBot: true };
     }
     this.match = new Match(this.rules, roster, this.sides);
     this.brains = this.match.players.map(p => new BotBrain(p.id, p.pos === 'GK' ? 0.85 : 1)); // botSkill rule scales these at runtime
     this.status = 'playing';
     this.lastResult = null;
-    for (const p of this.players.values()) p.ready = false;
+    for (const p of this.players.values()) { p.ready = false; p.statBase = null; }
     this.broadcast({ type: S2C.MATCH_START, rules: this.match.rules, sides: this.sides, roomId: this.id });
     this.broadcastRoom();
     this.lobby.broadcastLobby();
@@ -253,8 +267,27 @@ class Room {
     this.status = 'ended';
     this.lastResult = { winner: this.match.winner, score: Object.assign({}, this.match.score), stats: this.match.stats(), suddenDeath: this.match.suddenDeath, sides: this.sides };
     this.broadcast(Object.assign({ type: S2C.MATCH_END }, this.lastResult));
+    this.awardXp();
     this.broadcastRoom();
     this.lobby.broadcastLobby();
+  }
+
+  /** XP and career stats for every human who finished the match in a slot. */
+  awardXp(extraFor) {
+    const m = this.match, stats = m.stats();
+    const best = stats.reduce((a, s) => (!a || Progress.matchRating(s.stats) > Progress.matchRating(a.stats) ? s : a), null);
+    for (const p of this.players.values()) {
+      if (!p.slot || !p.client || !p.client.token || !this.lobby.profiles.has(p.client.token)) continue;
+      const mine = stats.find(s => s.id === p.slot);
+      if (!mine) continue;
+      const delta = {};
+      for (const [k, v] of Object.entries(mine.stats)) delta[k] = Math.max(0, v - ((p.statBase && p.statBase[k]) || 0));
+      const team = MCS.parseSlot(p.slot).team;
+      const result = m.winner === 'draw' ? 'draw' : m.winner === team ? 'win' : 'loss';
+      const extra = Object.assign({ mvp: best && best.id === p.slot && Progress.matchRating(best.stats) > 0 }, extraFor ? extraFor(team) : {});
+      const report = this.lobby.profiles.award(p.client.token, delta, result, extra);
+      if (report) { p.client.send(Object.assign({ type: S2C.XP }, report)); if (p.client.sendProfile) p.client.sendProfile(); }
+    }
   }
 
   // ---- Chat ------------------------------------------------------------
@@ -295,7 +328,7 @@ class Room {
     return {
       id: this.id, name: this.name, inviteCode: this.inviteCode, locked: !!this.password,
       hostId: this.hostId, status: this.status, rules: this.rules, slots: this.slots, sides: this.sides,
-      players: [...this.players.values()].map(p => ({ id: p.id, name: p.name, slot: p.slot, ready: p.ready, connected: p.connected })),
+      players: [...this.players.values()].map(p => ({ id: p.id, name: p.name, slot: p.slot, ready: p.ready, connected: p.connected, look: p.look || null })),
     };
   }
 

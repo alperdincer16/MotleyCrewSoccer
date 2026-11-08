@@ -224,3 +224,35 @@ details .rules-grid { margin-top: 12px; }
 .team-special { font-size: 13px; color: var(--muted); margin-top: 4px; }
 .team-special b { color: var(--accent); }
 #hud .score .combo:empty { display: none; }
+
+/* ---- T-30 player card & XP ---- */
+.card-chip { display: flex; align-items: center; gap: 8px; padding: 4px 10px 4px 4px; border-radius: 999px; font-size: 13px; }
+.card-chip #cardChipLevel { background: #d08c5b; color: #1a1400; font-weight: 800; border-radius: 999px; padding: 2px 8px; }
+.card-chip .chip-bar { width: 60px; height: 6px; background: rgba(255,255,255,.12); border-radius: 3px; overflow: hidden; }
+.card-chip #cardChipFill { display: block; height: 100%; width: 0; background: var(--accent); }
+@media (max-width: 640px) { .card-chip .chip-label, .card-chip .chip-bar { display: none; } }
+.card-dialog { width: min(860px, 94vw); }
+.card-layout { display: grid; grid-template-columns: 240px 1fr; gap: 22px; }
+@media (max-width: 700px) { .card-layout { grid-template-columns: 1fr; } }
+.card-left { display: flex; flex-direction: column; align-items: center; gap: 8px; background: var(--bg2); border-radius: 14px; padding: 14px; }
+.card-left canvas { image-rendering: pixelated; background: radial-gradient(circle at 50% 75%, rgba(255,255,255,.12), transparent 60%); border-radius: 10px; }
+.card-name { font-weight: 800; font-size: 18px; }
+.tier { font-size: 12px; font-weight: 800; color: #1a1400; border-radius: 999px; padding: 3px 10px; letter-spacing: .3px; }
+.xp-bar { width: 100%; height: 10px; background: rgba(255,255,255,.1); border-radius: 5px; overflow: hidden; }
+.xp-fill { height: 100%; width: 0; background: linear-gradient(90deg, #ffd166, #06d6a0); transition: width 1.2s cubic-bezier(.2,.8,.2,1); }
+.card-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; margin-top: 6px; }
+.card-stats .stat { background: var(--card); border-radius: 8px; padding: 6px 8px; display: flex; flex-direction: column; }
+.card-stats .stat b { font-size: 18px; }
+.card-stats .stat span { font-size: 11px; color: var(--muted); }
+.pick-row { display: flex; flex-wrap: wrap; gap: 6px; }
+.pick { font-size: 13px; padding: 5px 10px; display: inline-flex; align-items: center; gap: 6px; }
+.pick.on { border-color: var(--accent); background: rgba(255,209,102,.14); }
+.pick.locked { opacity: .5; }
+.swatch { width: 14px; height: 14px; border-radius: 4px; border: 1px solid rgba(255,255,255,.4); display: inline-block; }
+.xp-panel { background: var(--bg2); border-radius: 12px; padding: 12px; margin: 10px 0; display: flex; flex-direction: column; gap: 8px; }
+.xp-head { display: flex; justify-content: space-between; align-items: baseline; }
+.xp-gain { font-size: 22px; color: var(--accent); }
+.xp-up { color: var(--ok); font-weight: 800; }
+.xp-items { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 18px; font-size: 13px; color: var(--muted); }
+.xp-items div { display: flex; justify-content: space-between; }
+.xp-unlocks { font-size: 13px; color: var(--ok); }
