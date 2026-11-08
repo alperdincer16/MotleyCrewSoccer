@@ -174,7 +174,7 @@ class Room {
       roster[slot] = p ? { name: p.name, isBot: false } : { isBot: true };
     }
     this.match = new Match(this.rules, roster);
-    this.brains = this.match.players.map(p => new BotBrain(p.id, p.pos === 'GK' ? 0.85 : 1));
+    this.brains = this.match.players.map(p => new BotBrain(p.id, p.pos === 'GK' ? 0.85 : 1)); // botSkill rule scales these at runtime
     this.status = 'playing';
     this.lastResult = null;
     for (const p of this.players.values()) p.ready = false;

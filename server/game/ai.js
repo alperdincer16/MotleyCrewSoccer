@@ -19,7 +19,8 @@ function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 class BotBrain {
   constructor(slotId, difficulty = 1) {
     this.slotId = slotId;
-    this.difficulty = difficulty;      // 0.6 easy .. 1.3 hard (affects reaction + aim noise)
+    this.baseDifficulty = difficulty;  // position modifier (keepers are a touch slower)
+    this.difficulty = difficulty;      // scaled by the botSkill rule every update
     this.target = { x: W / 2, y: H / 2 };
     this.wantKick = false;
     this.wantDash = false;
@@ -77,6 +78,51 @@ class BotBrain {
       return { x: oppGoal.x, y: farPostY + noise(40) };
     };
     const clearTarget = () => ({ x: oppGoal.x, y: b.y < H / 2 ? H * 0.15 : H * 0.85 });
+    const opps = match.players.filter(p => p.team !== me.team);
+
+    /** Is the straight line from the ball to `target` blocked by an opponent? */
+    const laneBlocked = (target, width) => {
+      const tx = target.x - b.x, ty = target.y - b.y, tl = len(tx, ty) || 1;
+      for (const o of opps) {
+        const ox = o.x - b.x, oy = o.y - b.y;
+        const along = (ox * tx + oy * ty) / tl;
+        if (along < 0 || along > tl) continue;
+        const across = Math.abs(ox * ty - oy * tx) / tl;
+        if (across < width + o.r) return true;
+      }
+      return false;
+    };
+
+    /**
+     * Pick a pass target: a team-mate (never the keeper) who is in a free lane
+     * and not worse placed than the ball. Returns null if shooting is better.
+     */
+    const passTarget = () => {
+      let best = null, bestScore = -Infinity;
+      for (const m of mates) {
+        if (m.pos === 'GK') continue;
+        const d = len(m.x - b.x, m.y - b.y);
+        if (d < 120 || d > 520) continue;
+        const lead = { x: m.x + m.vx * 0.25, y: m.y + m.vy * 0.25 };
+        if (laneBlocked(lead, 14)) continue;
+        const progress = (lead.x - b.x) * dir;                 // upfield gain
+        const marked = opps.some(o => len(o.x - m.x, o.y - m.y) < 90) ? -120 : 0;
+        const score = progress + marked - d * 0.2;
+        if (score > bestScore) { bestScore = score; best = lead; }
+      }
+      return bestScore > -60 ? best : null;
+    };
+
+    /** Keep a little distance from team-mates heading to the same spot. */
+    const spaced = (t) => {
+      for (const m of mates) {
+        if (len(m.x - t.x, m.y - t.y) < 70 && len(m.x - b.x, m.y - b.y) < len(me.x - b.x, me.y - b.y)) {
+          const side = me.y < m.y ? -1 : 1;
+          return { x: t.x - dir * 40, y: t.y + side * 90 };
+        }
+      }
+      return t;
+    };
 
     /**
      * A kick travels roughly from me through the ball. Refuse to kick when
@@ -96,7 +142,13 @@ class BotBrain {
       let ax = aimAt.x - b.x, ay = aimAt.y - b.y;
       const al = len(ax, ay) || 1; ax /= al; ay /= al;
       const standOff = me.r + b.r + 6;
-      const behind = { x: pred.x - ax * standOff, y: pred.y - ay * standOff };
+      let behind = { x: pred.x - ax * standOff, y: pred.y - ay * standOff };
+      // Ball pinned on a wall: the spot "behind" it may be outside the arena.
+      // Then stand between the ball and our goal instead and poke it along the wall.
+      if (behind.x < me.r || behind.x > W - me.r || behind.y < me.r || behind.y > H - me.r) {
+        let gx = b.x - ownGoal.x, gy = b.y - ownGoal.y; const gl = len(gx, gy) || 1; gx /= gl; gy /= gl;
+        behind = { x: clamp(b.x - gx * standOff, me.r + 1, W - me.r - 1), y: clamp(b.y - gy * standOff, me.r + 1, H - me.r - 1) };
+      }
       // Am I roughly behind the ball relative to the target?
       const mx = b.x - me.x, my = b.y - me.y, ml = len(mx, my) || 1;
       const alignment = (mx / ml) * ax + (my / ml) * ay;
@@ -130,21 +182,27 @@ class BotBrain {
       // Rush when the ball is in the box and slow, or rolling toward goal nearby.
       const meToGoal = len(me.x - ownGoal.x, me.y - ownGoal.y);
       // Rush only from the goal side of the ball, otherwise we'd shove it in.
-      if (ballInOwnHalf && ballToGoal < 230 && meToGoal < ballToGoal + 10 && (bsp < 180 || (ballComing && ballToGoal < 160))) {
+      // Rush a slow ball in the box (never a fast one: hold the line instead).
+      if (ballInOwnHalf && ballToGoal < 230 && meToGoal < ballToGoal + 10 && (bsp < 160 || ballToGoal < 70)) {
         attackBall(clearTarget(), ballComing);
         this.lastPlan = 'gk-rush';
         return;
       }
       // Hold the line between ball and goal centre.
-      let ty = pred.y;
+      // Where will the ball cross our line? A keeper reads slow shots well but
+      // is late on fast ones: blend between "follow the ball" and the true
+      // intercept point depending on shot speed and skill.
+      let intercept = pred.y;
       if (Math.abs(b.vx) > 20) {
         const t = (lineX - b.x) / b.vx;
-        if (t > 0 && t < 2) ty = b.y + b.vy * t;
+        if (t > 0 && t < 2) intercept = b.y + b.vy * t;
       }
+      const read = clamp(1.15 - bsp / (650 * this.difficulty), 0.15, 1);
+      let ty = b.y + (intercept - b.y) * read;
       // Ball hugging our end wall: step onto its path.
       if (Math.abs(b.x - ownGoal.x) < 60 && Math.abs(b.vy) > 100) ty = b.y + Math.sign(b.vy) * 40;
       ty = clamp(ty, H / 2 - gh * 0.9, H / 2 + gh * 0.9);
-      this.target = { x: lineX, y: ty + noise(8) };
+      this.target = { x: lineX, y: ty + noise(22) };
       this.lastPlan = 'gk-line';
       this.wantKick = myDist < me.r + b.r + 16 && safeToKick();
       this.aim = clearTarget();
@@ -154,8 +212,9 @@ class BotBrain {
     if (me.pos === 'DEF') {
       const iAmClosest = myDist <= nearestMateDist + 10;
       if ((ballInOwnHalf && iAmClosest) || myDist < 90) {
-        attackBall(clearTarget(), ballInOwnHalf);
-        this.lastPlan = 'def-challenge';
+        const pass = passTarget();
+        attackBall(pass || clearTarget(), ballInOwnHalf);
+        this.lastPlan = pass ? 'def-pass' : 'def-challenge';
         return;
       }
       // Hold a covering position between ball and own goal.
@@ -165,7 +224,7 @@ class BotBrain {
       const cy = H / 2 + (b.y - H / 2) * 0.6;
       // Never stray past the halfway line by much.
       const limitX = dir > 0 ? Math.min(cx, W * 0.6) : Math.max(cx, W * 0.4);
-      this.target = { x: limitX, y: cy + noise(10) };
+      this.target = spaced({ x: limitX, y: cy + noise(10) });
       this.lastPlan = 'def-cover';
       return;
     }
@@ -173,15 +232,46 @@ class BotBrain {
     // FWD
     const iAmClosest = myDist <= nearestMateDist + 20;
     if (iAmClosest || !ballInOwnHalf || myDist < 140) {
-      attackBall(shootTarget(), true);
-      this.lastPlan = 'fwd-attack';
+      const goalDist = len(oppGoal.x - b.x, oppGoal.y - b.y);
+      const shot = shootTarget();
+      let aimAt = shot;
+      // Far out or blocked: look for a pass unless we are holding a rocket kick.
+      if (!me.effects.rocket && (goalDist > 520 || laneBlocked(shot, 30))) {
+        const pass = passTarget();
+        if (pass) aimAt = pass;
+      }
+      attackBall(aimAt, true);
+      this.lastPlan = aimAt === shot ? 'fwd-attack' : 'fwd-pass';
       return;
     }
     // Support: get ahead of the ball on the far side for a pass.
     const sx = clamp(b.x + dir * 180, W * 0.12, W * 0.88);
     const sy = b.y < H / 2 ? H * 0.72 : H * 0.28;
-    this.target = { x: sx, y: sy + noise(15) };
+    this.target = spaced({ x: sx, y: sy + noise(15) });
     this.lastPlan = 'fwd-support';
+  }
+
+  /**
+   * Evaluated every tick (not just at re-plan time): would kicking the ball
+   * right now send it toward our own goal? Uses the actual kick geometry,
+   * i.e. the line from me through the ball, extended to our goal line.
+   */
+  kickSafeNow(match, me) {
+    const b = match.ball;
+    const dir = match.attackDir(me.team);
+    const ownGoal = match.goalCenter(me.team);
+    const gh = match.goalHalfWidth();
+    const ballInOwnHalf = dir > 0 ? b.x < W / 2 : b.x > W / 2;
+    if (!ballInOwnHalf) return true;
+    let kx = b.x - me.x, ky = b.y - me.y; const kl = len(kx, ky) || 1; kx /= kl; ky /= kl;
+    const backward = -kx * dir;                 // > 0 means toward our own end line
+    if (backward <= 0.05) return true;
+    const t = (ownGoal.x - b.x) / kx;           // distance along the ray to our end line
+    const yAt = b.y + ky * t;
+    if (Math.abs(yAt - H / 2) < gh + 45) return false;          // would cross into (or skim) the goal
+    const toGoal = len(b.x - ownGoal.x, b.y - ownGoal.y);
+    if (backward > 0.6 && toGoal < 300) return false;           // hammering it into our own end wall near the goal
+    return true;
   }
 
   /** Returns an input object for this tick. */
@@ -190,9 +280,10 @@ class BotBrain {
     const input = { up: false, down: false, left: false, right: false, kick: false, dash: false, aimX: null, aimY: null };
     if (!me || match.state === 'countdown' || match.state === 'goal' || match.state === 'ended') return input;
 
+    this.difficulty = this.baseDifficulty * (match.rules.botSkill || 1);
     this.replanIn -= dt;
     if (this.replanIn <= 0) {
-      this.replanIn = (0.1 + Math.random() * 0.06) / this.difficulty;
+      this.replanIn = ((me.pos === 'GK' ? 0.14 : 0.1) + Math.random() * 0.06) / this.difficulty;
       this.think(match, me);
     }
 
@@ -235,7 +326,7 @@ class BotBrain {
       if (sx > thr) input.right = true; else if (sx < -thr) input.left = true;
       if (sy > thr) input.down = true; else if (sy < -thr) input.up = true;
     }
-    input.kick = this.wantKick;
+    input.kick = this.wantKick && this.kickSafeNow(match, me);
     input.dash = this.wantDash && match.rules.dashEnabled;
     if (this.aim) { input.aimX = this.aim.x; input.aimY = this.aim.y; }
     return input;
