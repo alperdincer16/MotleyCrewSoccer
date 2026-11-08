@@ -59,6 +59,15 @@
     <h2>Create a game</h2>
     <label>Game name <input name="name" maxlength="32" placeholder="Friday kickabout" required></label>
     <label>Password <span class="muted">(optional)</span> <input name="password" maxlength="64" placeholder="Leave blank for a public game"></label>
+    <div class="create-teams">
+      <div class="section-head"><h3>Teams</h3><button type="button" class="ghost small" id="createShuffle">Shuffle</button></div>
+      <div class="create-sides">
+        <div class="create-side" id="createSide-red"></div>
+        <div class="vs small">VS</div>
+        <div class="create-side" id="createSide-blue"></div>
+      </div>
+      <div class="muted small-note">You can still change teams in the pre-match room.</div>
+    </div>
     <details>
       <summary>Rules &amp; boosts</summary>
       <div id="createRules" class="rules-grid"></div>

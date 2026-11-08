@@ -105,6 +105,19 @@ details .rules-grid { margin-top: 12px; }
 .team-traits { display: flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
 .team-traits span { font-size: 11px; padding: 2px 8px; border-radius: 999px; background: var(--bg2); border: 1px solid var(--line); }
 .team-traits .up { color: var(--ok); } .team-traits .down { color: var(--muted); }
+.create-teams .section-head { margin: 4px 0 8px; }
+.create-teams h3 { margin: 0; }
+.create-sides { display: grid; grid-template-columns: 1fr auto 1fr; gap: 10px; align-items: start; }
+.create-side { background: var(--bg2); border: 1px solid var(--line); border-radius: 12px; padding: 10px; display: flex; flex-direction: column; gap: 8px; border-top: 3px solid var(--line); }
+.create-side .pick { display: flex; align-items: center; gap: 8px; }
+.create-side .pick select { flex: 1; min-width: 0; }
+.create-side .preview { display: flex; gap: 6px; align-items: flex-end; }
+.create-side .preview .avatar { image-rendering: pixelated; width: 28px; height: 40px; }
+.create-side .blurb { font-size: 12px; color: var(--muted); line-height: 1.35; }
+.create-side .blurb b { color: var(--text); }
+.vs.small { font-size: 18px; align-self: center; }
+.small-note { font-size: 12px; margin-top: 6px; }
+@media (max-width: 560px) { .create-sides { grid-template-columns: 1fr; } .vs.small { text-align: center; } }
 .team-board.red h2 { color: var(--teamRed); } .team-board.blue h2 { color: var(--teamBlue); }
 .slots { display: flex; flex-direction: column; gap: 8px; }
 .slot { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; background: var(--bg2); border: 1px solid var(--line); cursor: pointer; transition: background .15s; }

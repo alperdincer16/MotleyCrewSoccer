@@ -10,7 +10,8 @@ seat a human doesn't take.
   are bots. The host edits the rules and chooses which boosts are in the pool.
 * **National teams**: 16 nations with authentic-looking pixel kits, keeper
   kits and distinct play styles (Brazil dribbles, Spain passes, England goes
-  long, Italy parks the bus). The host picks both sides; clashing kits switch
+  long, Italy parks the bus). Pick both sides when creating a game or in the
+  pre-match room; clashing kits switch
   to the alternate automatically.
 * **Live join**: open a game in progress and take over any bot slot.
 * **Rules** are all host-editable: match length, goal limit, sudden death,

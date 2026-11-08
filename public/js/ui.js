@@ -80,6 +80,7 @@
       this.games = [];
       this.pendingJoin = null;
       this.createRules = MCS.defaultRules();
+      this.createSides = Teams.randomPair();
       this.bind();
     }
 
@@ -100,9 +101,10 @@
       $('createForm').onsubmit = (e) => {
         e.preventDefault();
         const fd = new FormData(e.target);
-        this.net.send('createGame', { name: fd.get('name'), password: fd.get('password') || undefined, rules: this.createRules });
+        this.net.send('createGame', { name: fd.get('name'), password: fd.get('password') || undefined, rules: this.createRules, sides: this.createSides });
         $('createDialog').close();
       };
+      $('createShuffle').onclick = () => { this.createSides = Teams.randomPair(); this.renderCreateSides(); };
       $('joinCodeForm').onsubmit = (e) => { e.preventDefault(); const code = $('joinCode').value.trim(); if (code) this.net.send('joinGame', { invite: code }); };
       $('passwordCancel').onclick = () => $('passwordDialog').close();
       $('passwordForm').onsubmit = (e) => {
@@ -126,8 +128,10 @@
     // ---- Lobby --------------------------------------------------------------
     openCreate() {
       this.createRules = MCS.defaultRules();
+      this.createSides = Teams.randomPair();
       const form = $('createForm'); form.reset();
       form.elements.name.value = `${this.net.name || 'My'}'s game`;
+      this.renderCreateSides();
       const rerender = () => {
         renderRulesEditor($('createRules'), this.createRules, true, (patch) => { this.createRules = MCS.sanitizeRules(patch, this.createRules); });
         const bt = $('createBoosts') || (() => { const d = el('div', 'boost-grid'); d.id = 'createBoosts'; d.style.gridColumn = '1 / -1'; $('createRules').after(d); return d; })();
@@ -135,6 +139,38 @@
       };
       rerender();
       $('createDialog').showModal();
+    }
+
+    /** Team pickers inside the create dialog: select, kit preview, style blurb. */
+    renderCreateSides() {
+      const kits = Teams.resolveKits(this.createSides.red, this.createSides.blue);
+      for (const team of MCS.TEAMS) {
+        const box = $('createSide-' + team); box.innerHTML = '';
+        const nation = Teams.get(this.createSides[team]);
+        box.style.borderTopColor = Teams.sideColor(kits[team]);
+        const pick = el('div', 'pick');
+        pick.appendChild(el('span', 'flag', nation.flag));
+        const sel = el('select', 'team-select');
+        for (const id of Teams.IDS) {
+          const o = el('option', null, `${Teams.NATIONS[id].flag} ${Teams.NATIONS[id].name}`); o.value = id; o.selected = id === this.createSides[team];
+          sel.appendChild(o);
+        }
+        sel.onchange = () => {
+          const other = MCS.otherTeam(team);
+          if (this.createSides[other] === sel.value) this.createSides[other] = this.createSides[team]; // swap, never duplicate
+          this.createSides[team] = sel.value;
+          this.renderCreateSides();
+        };
+        pick.appendChild(sel);
+        box.appendChild(pick);
+        const prev = el('div', 'preview');
+        for (const pos of MCS.POSITIONS) prev.appendChild(avatar(team, pos, Teams.botName(this.createSides[team], team, pos), 2, kits[team]));
+        box.appendChild(prev);
+        const blurb = el('div', 'blurb');
+        blurb.appendChild(el('b', null, nation.style));
+        blurb.appendChild(document.createTextNode(' · ' + nation.desc));
+        box.appendChild(blurb);
+      }
     }
 
     renderLobby(games) {
