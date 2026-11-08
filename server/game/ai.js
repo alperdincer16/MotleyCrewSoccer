@@ -9,6 +9,7 @@
 'use strict';
 
 const MCS = require('../../shared/rules');
+const Teams = require('../../shared/teams');
 const { FIELD, BALL_RADIUS } = MCS;
 const W = FIELD.width;
 const H = FIELD.height;
@@ -53,6 +54,8 @@ class BotBrain {
     const ballInOwnHalf = dir > 0 ? b.x < W / 2 : b.x > W / 2;
     const pred = this.predictBall(match, 0.35);
     const noise = (amp) => (Math.sin(this.noiseSeed + match.tick * 0.013) * amp) / this.difficulty;
+    const style = Teams.aiFor(match.sides ? match.sides[me.team] : null);
+    this.dashRoll = Math.random();
 
     this.wantKick = false;
     this.wantDash = false;
@@ -75,7 +78,7 @@ class BotBrain {
     // Shooting / clearing target: aim for the far post, or clear upfield.
     const shootTarget = () => {
       const farPostY = me.y < H / 2 ? H / 2 + gh * 0.6 : H / 2 - gh * 0.6;
-      return { x: oppGoal.x, y: farPostY + noise(40) };
+      return { x: oppGoal.x, y: farPostY + noise(40 * style.flair) };
     };
     const clearTarget = () => ({ x: oppGoal.x, y: b.y < H / 2 ? H * 0.15 : H * 0.85 });
     const opps = match.players.filter(p => p.team !== me.team);
@@ -110,7 +113,7 @@ class BotBrain {
         const score = progress + marked - d * 0.2;
         if (score > bestScore) { bestScore = score; best = lead; }
       }
-      return bestScore > -60 ? best : null;
+      return bestScore > -60 - style.passing * 90 ? best : null;
     };
 
     /** Keep a little distance from team-mates heading to the same spot. */
@@ -170,7 +173,7 @@ class BotBrain {
       }
       this.aim = aimAt;
       this.wantKick = myDist < me.r + b.r + 18 && alignment > 0.15 && safeToKick();
-      if (aggressive && myDist > 160 && myDist < 420 && me.dashCooldown === 0) this.wantDash = true;
+      if (aggressive && myDist > 160 && myDist < 420 && me.dashCooldown === 0 && this.dashRoll < style.dash) this.wantDash = true;
     };
 
     if (me.pos === 'GK') {
@@ -183,7 +186,8 @@ class BotBrain {
       const meToGoal = len(me.x - ownGoal.x, me.y - ownGoal.y);
       // Rush only from the goal side of the ball, otherwise we'd shove it in.
       // Rush a slow ball in the box (never a fast one: hold the line instead).
-      if (ballInOwnHalf && ballToGoal < 230 && meToGoal < ballToGoal + 10 && (bsp < 160 || ballToGoal < 70)) {
+      const rushRange = 150 + style.gkRush * 120, rushSpeed = 110 + style.gkRush * 90;
+      if (ballInOwnHalf && ballToGoal < rushRange && meToGoal < ballToGoal + 10 && (bsp < rushSpeed || ballToGoal < 70)) {
         attackBall(clearTarget(), ballComing);
         this.lastPlan = 'gk-rush';
         return;
@@ -211,19 +215,21 @@ class BotBrain {
 
     if (me.pos === 'DEF') {
       const iAmClosest = myDist <= nearestMateDist + 10;
-      if ((ballInOwnHalf && iAmClosest) || myDist < 90) {
+      const highPress = !ballInOwnHalf && style.press > 0.7 && iAmClosest && myDist < 260;
+      if ((ballInOwnHalf && iAmClosest) || myDist < 90 + style.press * 110 || highPress) {
         const pass = passTarget();
         attackBall(pass || clearTarget(), ballInOwnHalf);
         this.lastPlan = pass ? 'def-pass' : 'def-challenge';
         return;
       }
       // Hold a covering position between ball and own goal.
-      const gx = ownGoal.x + dir * 150;
-      const t = 0.45;
+      // How high the defender holds depends on the nation's defensive line.
+      const gx = ownGoal.x + dir * (100 + style.defLine * 220);
+      const t = 0.35 + style.defLine * 0.3;
       const cx = gx + (b.x - gx) * t;
       const cy = H / 2 + (b.y - H / 2) * 0.6;
-      // Never stray past the halfway line by much.
-      const limitX = dir > 0 ? Math.min(cx, W * 0.6) : Math.max(cx, W * 0.4);
+      const maxAdvance = 0.5 + style.defLine * 0.3;   // fraction of the pitch the defender may reach
+      const limitX = dir > 0 ? Math.min(cx, W * maxAdvance) : Math.max(cx, W * (1 - maxAdvance));
       this.target = spaced({ x: limitX, y: cy + noise(10) });
       this.lastPlan = 'def-cover';
       return;
@@ -231,12 +237,14 @@ class BotBrain {
 
     // FWD
     const iAmClosest = myDist <= nearestMateDist + 20;
-    if (iAmClosest || !ballInOwnHalf || myDist < 140) {
+    if (iAmClosest || !ballInOwnHalf || myDist < 140 + style.press * 100) {
       const goalDist = len(oppGoal.x - b.x, oppGoal.y - b.y);
       const shot = shootTarget();
       let aimAt = shot;
-      // Far out or blocked: look for a pass unless we are holding a rocket kick.
-      if (!me.effects.rocket && (goalDist > 520 || laneBlocked(shot, 30))) {
+      // Out of this nation's shooting range, blocked, or simply a passing side:
+      // look for a pass unless we are holding a rocket kick.
+      const passingMood = style.passing > 0.7 && goalDist > 260 && this.dashRoll < style.passing - 0.4;
+      if (!me.effects.rocket && (goalDist > style.shootRange || laneBlocked(shot, 30) || passingMood)) {
         const pass = passTarget();
         if (pass) aimAt = pass;
       }
@@ -245,7 +253,7 @@ class BotBrain {
       return;
     }
     // Support: get ahead of the ball on the far side for a pass.
-    const sx = clamp(b.x + dir * 180, W * 0.12, W * 0.88);
+    const sx = clamp(b.x + dir * (140 + style.passing * 90), W * 0.12, W * 0.88);
     const sy = b.y < H / 2 ? H * 0.72 : H * 0.28;
     this.target = spaced({ x: sx, y: sy + noise(15) });
     this.lastPlan = 'fwd-support';

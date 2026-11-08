@@ -12,6 +12,7 @@
 
 const MCS = require('../../shared/rules');
 const Physics = require('../../shared/physics');
+const Teams = require('../../shared/teams');
 const { FIELD, PLAYER_RADIUS, BALL_RADIUS, TEAMS, POSITIONS, BOOSTS, FORMATION } = MCS;
 const { FEEL } = Physics;
 
@@ -29,9 +30,12 @@ class Match {
   /**
    * @param {object} rules  sanitized rules (see shared/rules.js)
    * @param {object} roster map slotId -> { name, isBot }
+   * @param {object} sides  { red: nationId, blue: nationId }
    */
-  constructor(rules, roster) {
+  constructor(rules, roster, sides) {
     this.rules = MCS.sanitizeRules(rules);
+    this.sides = Teams.sanitizeSides(sides);
+    this.traits = { red: Teams.traitsFor(this.sides.red), blue: Teams.traitsFor(this.sides.blue) };
     this.tick = 0;
     this.time = this.rules.matchSeconds;   // seconds remaining
     this.state = 'countdown';              // countdown | kickoff | play | goal | ended
@@ -58,7 +62,7 @@ class Match {
         const info = (roster && roster[id]) || {};
         this.players.push({
           id, team, pos,
-          name: info.name || `${team.toUpperCase()} ${pos} bot`,
+          name: info.name || Teams.botName(this.sides[team], team, pos),
           isBot: info.isBot !== false,
           x: 0, y: 0, vx: 0, vy: 0, r: PLAYER_RADIUS,
           input: blankInput(),
@@ -78,7 +82,7 @@ class Match {
   setHuman(slotId, name) { const p = this.player(slotId); if (p) { p.isBot = false; p.name = name; } }
   setBot(slotId) {
     const p = this.player(slotId);
-    if (p) { p.isBot = true; p.name = `${p.team.toUpperCase()} ${p.pos} bot`; p.input = blankInput(); }
+    if (p) { p.isBot = true; p.name = Teams.botName(this.sides[p.team], p.team, p.pos); p.input = blankInput(); }
   }
   setInput(slotId, input) {
     const p = this.player(slotId);
@@ -184,13 +188,13 @@ class Match {
   }
 
   // ---- Players -------------------------------------------------------------
-  speedMul(p) { return Physics.speedMul(this.rules, this.effectState(p)); }
+  speedMul(p) { return Physics.speedMul(this.rules, this.effectState(p), this.traits[p.team]); }
 
   integratePlayer(p, dt) {
     p.kickCooldown = Math.max(0, p.kickCooldown - dt);
     p.kickFlash = Math.max(0, p.kickFlash - dt);
     p.kickBuffer = Math.max(0, p.kickBuffer - dt);
-    const dashed = Physics.integratePlayer(p, p.input, this.rules, dt, this.effectState(p), this.ball);
+    const dashed = Physics.integratePlayer(p, p.input, this.rules, dt, this.effectState(p), this.ball, this.traits[p.team]);
     if (dashed) this.emit({ type: 'dash', slot: p.id, x: p.x, y: p.y });
   }
 
@@ -291,7 +295,7 @@ class Match {
         if (dot > 0.2) { nx = nx * 0.45 + ax * 0.55; ny = ny * 0.45 + ay * 0.55; const l = len(nx, ny); nx /= l; ny /= l; }
       }
     }
-    let power = FEEL.kickSpeed * this.rules.kickPower;
+    let power = FEEL.kickSpeed * this.rules.kickPower * this.traits[p.team].kick;
     let rocket = false;
     if (p.effects.rocket) { power *= 2.2; delete p.effects.rocket; rocket = true; }
     if (b.effects.giant) power *= 0.8;

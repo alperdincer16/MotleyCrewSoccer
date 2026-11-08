@@ -45,8 +45,8 @@
   function len(x, y) { return Math.hypot(x, y); }
 
   /** Speed multiplier from rules + active effects {speed, shrink}. */
-  function speedMul(rules, st) {
-    let m = rules.playerSpeed;
+  function speedMul(rules, st, traits) {
+    let m = rules.playerSpeed * (traits && traits.speed ? traits.speed : 1);
     if (st.speed) m *= 1.6;
     if (st.shrink) m *= 0.7;
     return m;
@@ -59,9 +59,10 @@
    * input: { up, down, left, right, dash }
    * st: { speed, shrink, frozen }  (effect state)
    * aim: { x, y } fallback dash direction when standing still (the ball)
+   * traits: { speed, kick, dash } national team modifiers (optional)
    * Returns true if a dash fired this step.
    */
-  function integratePlayer(p, input, rules, dt, st, aim) {
+  function integratePlayer(p, input, rules, dt, st, aim, traits) {
     p.r = radiusFor(st);
     p.dashCooldown = Math.max(0, p.dashCooldown - dt);
     p.dashTime = Math.max(0, p.dashTime - dt);
@@ -74,7 +75,7 @@
       if (input.down) dy += 1;
     }
     const moving = dx !== 0 || dy !== 0;
-    const mul = speedMul(rules, st);
+    const mul = speedMul(rules, st, traits);
     if (moving) {
       const l = len(dx, dy); dx /= l; dy /= l;
       p.vx += dx * FEEL.playerAccel * mul * dt;
@@ -88,7 +89,7 @@
       if (ddx !== 0 || ddy !== 0) {
         p.vx += ddx * FEEL.dashImpulse;
         p.vy += ddy * FEEL.dashImpulse;
-        p.dashCooldown = FEEL.dashCooldown;
+        p.dashCooldown = FEEL.dashCooldown * (traits && traits.dash ? traits.dash : 1);
         p.dashTime = FEEL.dashDuration;
         dashed = true;
       }
