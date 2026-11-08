@@ -26,7 +26,7 @@
   const Teams = window.Teams;
   const { FIELD } = MCS;
   const INPUT_RATE = 30;
-  const FX = { speed: 1, rocket: 2, frozen: 4, shrink: 8, magnet: 16, shield: 32, slide: 64, sticky: 128, armed: 256, stun: 512 };
+  const FX = { speed: 1, rocket: 2, frozen: 4, shrink: 8, magnet: 16, shield: 32, slide: 64, sticky: 128, armed: 256, stun: 512, stumble: 1024 };
   const SIM_DT = 1 / MCS.TICK_RATE;
 
   class Game {
@@ -346,6 +346,14 @@
             R.callout(e.slot, `${sp.icon} ${sp.name.toUpperCase()}`, this.teamColors[e.team]);
             if (R.crowd) R.crowd.pulse(e.team, 0.35);
             if (e.kind === 'shockwave') R.kickShake(10);
+            break;
+          }
+          case 'steal': {
+            const ground = R.arena === 'ice' ? '#e8f4ff' : R.arena === 'mud' ? '#6b4a2b' : '#c9a66b';
+            R.tackleFx(e, this.teamColors[e.team], ground);
+            this.audio.tackle();
+            if (e.slot === this.mySlot || e.victim === this.mySlot) R.kickShake(5);
+            if (R.crowd) R.crowd.pulse(e.team, 0.15);
             break;
           }
           case 'tackle':

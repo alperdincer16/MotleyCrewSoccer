@@ -82,8 +82,11 @@ forward when there is room, and only clear it under pressure.
 
 * Bumping into a ball that someone is dribbling does not knock it loose;
   only a tackle (a kick) can win it.
-* For 0.7 s after winning the ball, even tackles can't take it, and the
+* For 0.5 s after winning the ball, even tackles can't take it, and the
   player who just lost it can't snatch it straight back.
+* A successful tackle plays an animation: the tackler lunges into the ball
+  with a motion smear and a TACKLE! callout, dust and an impact ring burst at
+  the contact point, and the tackled player stumbles (no kicking for 0.35 s).
 * Right next to their own goal, a player's body touch never sends the ball
   backwards into the net (keepers get a bigger zone).
 

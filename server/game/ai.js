@@ -349,15 +349,24 @@ class BotBrain {
         if (this.jockeyFor !== carrier.id) { this.jockeyFor = carrier.id; this.jockeyStart = match.tick; }
         const t = (match.tick - this.jockeyStart) / MCS.TICK_RATE;
         // Wait for support in midfield, but don't let a dribbler stroll in on goal.
-        const danger = len(carrier.x - ownGoal.x, carrier.y - ownGoal.y) < 380 ? 0.45 : 1;
-        const wait = clamp((1.15 - style.press * 0.45) * danger / this.difficulty, 0.25, 1.6);
+        // (Alper: "tackle sooner" — base wait cut from ~0.9 s to ~0.45 s.)
+        const danger = len(carrier.x - ownGoal.x, carrier.y - ownGoal.y) < 380 ? 0.5 : 1;
+        const wait = clamp((0.7 - style.press * 0.3) * danger / this.difficulty, 0.15, 0.9);
         if (t < wait) {
           let gx = ownGoal.x - carrier.x, gy = ownGoal.y - carrier.y; const gl = len(gx, gy) || 1;
           this.target = { x: carrier.x + gx / gl * 58, y: carrier.y + gy / gl * 58 };
           this.lastPlan = 'jockey';
           return;
         }
-        if (t > wait + 0.7) this.jockeyStart = match.tick;   // tackle window over: back off
+        if (t > wait + 1.0) { this.jockeyStart = match.tick; return; }   // tackle window over: back off
+        // Tackle: go straight in at the ball and poke it away (to a team-mate
+        // if one is open, else clear), whichever side we arrive from.
+        this.target = { x: b.x + b.vx * 0.08, y: b.y + b.vy * 0.08 };
+        this.aim = passTarget() || clearTarget();
+        this.wantKick = myDist < me.r + b.r + Physics.FEEL.kickRange + 4;
+        if (myDist > 70 && me.dashCooldown === 0 && this.dashRoll < style.dash * 0.6) this.wantDash = true;
+        this.lastPlan = 'tackle';
+        return;
       } else {
         this.jockeyFor = null;
       }

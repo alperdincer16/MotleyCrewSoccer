@@ -19,7 +19,7 @@ const { FEEL } = Physics;
 const W = FIELD.width;
 const H = FIELD.height;
 
-const EFFECT_FLAGS = { speed: 1, rocket: 2, frozen: 4, shrink: 8, magnet: 16, shield: 32, slide: 64, sticky: 128, armed: 256, stun: 512 };
+const EFFECT_FLAGS = { speed: 1, rocket: 2, frozen: 4, shrink: 8, magnet: 16, shield: 32, slide: 64, sticky: 128, armed: 256, stun: 512, stumble: 1024 };
 const BALL_FLAGS = { giant: 1, thunder: 2, fire: 4, laser: 8 };
 const ARMED_SECONDS = 5;        // a kick-type signature move stays armed this long
 const COMBO_PASSES = 3;         // completed passes in a row that power up the next shot
@@ -467,7 +467,7 @@ class Match {
     if (cur && cur !== best && len(b.x - cur.x, b.y - cur.y) - cur.r - b.r < FEEL.carryReach && (!best || best.team === cur.team)) { best = cur; bestD = 0; }
     const p = best;
     if (!p || bestD > FEEL.carryReach) return;
-    if (p.dashTime > 0 || p.effects.stun || p.effects.frozen || p.effects.slide || p.effects.sticky) return;
+    if (p.dashTime > 0 || p.effects.stun || p.effects.stumble || p.effects.frozen || p.effects.slide || p.effects.sticky) return;
     if (p.kickCooldown > FEEL.kickCooldown - 0.15) return;
     if (len(b.vx - p.vx, b.vy - p.vy) > FEEL.carryMaxRel) return;
     let mx = (p.input.right ? 1 : 0) - (p.input.left ? 1 : 0);
@@ -541,7 +541,7 @@ class Match {
   tryKick(p, dt) {
     const wantsLob = p.input.lob;
     const wants = p.input.kick || wantsLob || p.kickBuffer > 0;
-    if (!wants || p.kickCooldown > 0 || p.effects.frozen || p.effects.stun) return;
+    if (!wants || p.kickCooldown > 0 || p.effects.frozen || p.effects.stun || p.effects.stumble) return;
     const b = this.ball;
     if (b.z > (p.pos === 'GK' ? FEEL.keeperReach : FEEL.headHeight)) return;
     if (this.ballProtectedFrom(p, 'kick')) return;
@@ -564,6 +564,9 @@ class Match {
     }
     // Charge: 0 for a tap, 1 for a full hold.
     const charge = clamp((p.chargeT - FEEL.chargeStart) / (FEEL.chargeFull - FEEL.chargeStart), 0, 1);
+    // Tackle (T-43): kicking a ball an opponent has on their foot.
+    const pos = this.possession;
+    const stealFrom = pos && pos.team !== p.team && this.tick - pos.lastTick <= 2 ? this.player(pos.slot) : null;
     let power = FEEL.kickSpeed * this.rules.kickPower * this.traits[p.team].kick * (1 + FEEL.chargeBonus * charge);
     let rocket = false, special = null, comboShot = false;
     let spin = p.input.curve * FEEL.curveMax;
@@ -617,6 +620,13 @@ class Match {
     this.addMeter(p, 0.06);
     this.registerTouch(p, true);
     this.emit({ type: 'kick', slot: p.id, team: p.team, x: b.x, y: b.y, power: power / FEEL.kickSpeed, rocket, lob: b.vz > 0, curve: Math.round(b.spin * 100) / 100, charge: Math.round(charge * 100) / 100, special, combo: comboShot });
+    if (stealFrom) {
+      p.stats.tackles = (p.stats.tackles || 0) + 1;
+      this.possession = null;
+      // The tackled player stumbles for a moment (slower, can't kick).
+      if (!stealFrom.effects.shield) stealFrom.effects.stumble = 0.35;
+      this.emit({ type: 'steal', slot: p.id, victim: stealFrom.id, team: p.team, x: b.x, y: b.y, dx: Math.round(nx * 100) / 100, dy: Math.round(ny * 100) / 100 });
+    }
   }
 
   /** Where a laser pass goes: the best-placed team-mate's run, else the far corner. */

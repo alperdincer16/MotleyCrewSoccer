@@ -60,3 +60,22 @@ test('a keeper blocking a ball that rolls along the goal line does not knock it 
     assert.equal(m.score.blue, 0, `no own goal (vy=${vy})`);
   }
 });
+
+test('a tackle on a dribbler emits a steal event and the victim stumbles', () => {
+  const m = new Match({}, { 'red:MID': { name: 'H', isBot: false }, 'blue:DEF': { name: 'O', isBot: false } }); m.state = 'play';
+  const me = m.player('red:MID'), opp = m.player('blue:DEF');
+  for (const p of m.players) if (p !== me && p !== opp) { p.x = 40; p.y = 40 + m.players.indexOf(p) * 60; }
+  me.x = 400; me.y = 350; m.ball.x = me.x + 32; m.ball.y = 350; opp.x = 700; opp.y = 100;
+  for (let i = 0; i < 5; i++) { m.setInput('red:MID', { right: true }); m.step(DT); }
+  m.possession.protectUntil = m.tick;
+  opp.x = m.ball.x + opp.r + m.ball.r + 2; opp.y = m.ball.y; opp.kickCooldown = 0;
+  m.events.length = 0;
+  m.setInput('blue:DEF', { kick: true }); m.step(DT);
+  const steal = m.events.find(e => e.type === 'steal');
+  assert.ok(steal, 'steal event');
+  assert.equal(steal.slot, 'blue:DEF'); assert.equal(steal.victim, 'red:MID');
+  assert.ok(me.effects.stumble > 0, 'victim stumbles');
+  m.events.length = 0;
+  m.setInput('red:MID', { kick: true }); m.step(DT);
+  assert.ok(!m.events.some(e => e.type === 'kick' && e.slot === 'red:MID'), 'a stumbling player cannot kick straight back');
+});
