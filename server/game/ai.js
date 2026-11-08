@@ -228,6 +228,21 @@ class BotBrain {
       // Rush only from the goal side of the ball, otherwise we'd shove it in.
       // Rush a slow ball in the box (never a fast one: hold the line instead).
       const rushRange = 150 + style.gkRush * 120, rushSpeed = 110 + style.gkRush * 90;
+      // Loose ball on our goal line, behind the keeper (T-37): any touch from
+      // in front would bundle it in, so come round to the centre side and
+      // sweep it sideways out past the post instead.
+      const minD = me.r + b.r;
+      if ((b.x - me.x) * dir < 6 && Math.abs(b.x - ownGoal.x) < minD + 20 && Math.abs(b.y - H / 2) < gh + 12 && bsp < 260) {
+        const side = b.y < H / 2 ? 1 : -1;            // stand on the centre side of the ball
+        const lineIn = clamp(ownGoal.x + dir * (me.r + 1), me.r + 1, W - me.r - 1);
+        const d = len(me.x - b.x, me.y - b.y);
+        if ((me.y - b.y) * side > minD * 0.6) this.target = { x: lineIn, y: b.y };          // push it toward the post
+        else if (d < minD + 10) this.target = { x: b.x + dir * (minD + 30), y: me.y };      // step off it first
+        else this.target = { x: lineIn, y: b.y + side * (minD + 4) };                        // go round
+        this.wantKick = false; this.aim = null;
+        this.lastPlan = 'gk-sweep';
+        return;
+      }
       if (ballInOwnHalf && ballToGoal < rushRange && meToGoal < ballToGoal + 10 && (bsp < rushSpeed || ballToGoal < 70)) {
         attackBall(clearTarget(), ballComing);
         this.lastPlan = 'gk-rush';
@@ -251,6 +266,30 @@ class BotBrain {
       this.lastPlan = 'gk-line';
       this.wantKick = myDist < me.r + b.r + 16 && safeToKick();
       this.aim = clearTarget();
+      return;
+    }
+
+    // MID: box-to-box link player (T-37). Wins the ball in the middle third,
+    // moves it on to the forward, and shoots only from a clear look.
+    if (me.pos === 'MID') {
+      const iAmClosest = myDist <= nearestMateDist + 15;
+      if (iAmClosest || myDist < 110 + style.press * 90) {
+        const goalDist = len(oppGoal.x - b.x, oppGoal.y - b.y);
+        const shot = shootTarget();
+        let aimAt = null;
+        if (goalDist < style.shootRange * 0.9 && !laneBlocked(shot, 30)) aimAt = shot;
+        if (!aimAt) aimAt = passTarget();
+        if (!aimAt) aimAt = ballInOwnHalf ? clearTarget() : { x: clamp(b.x + dir * 240, 0, W), y: H / 2 + (b.y - H / 2) * 0.5 };
+        attackBall(aimAt, !ballInOwnHalf);
+        this.lastPlan = aimAt === shot ? 'fwd-attack' : 'def-pass';
+        return;
+      }
+      // Hold the middle: trail the ball upfield, shade toward its side,
+      // and stay on the opposite flank to the forward's support run.
+      const hx = clamp(b.x - dir * (90 - style.press * 40), W * 0.18, W * 0.82);
+      const hy = H / 2 + (b.y - H / 2) * 0.45;
+      this.target = spaced({ x: hx, y: hy + noise(14) });
+      this.lastPlan = 'mid-hold';
       return;
     }
 

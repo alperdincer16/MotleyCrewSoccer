@@ -208,6 +208,7 @@ class Match {
       this._heading = { x: b.x, y: b.y, vx: b.vx, vy: b.vy };
       for (const p of this.players) this.collideBallPlayer(p);
     }
+    this.applyCarry(dt);
     for (const p of this.players) this.tryKick(p, dt);
 
     if (this.state === 'kickoff' && len(this.ball.vx, this.ball.vy) > 1) this.state = 'play';
@@ -363,14 +364,25 @@ class Match {
     if (ballShare < 1) { p.x -= nx * overlap * (1 - ballShare); p.y -= ny * overlap * (1 - ballShare); }
     const rvx = b.vx - p.vx, rvy = b.vy - p.vy;
     const vn = rvx * nx + rvy * ny;
+    // First touch (T-38): a ball arriving at a sensible pace is cushioned
+    // instead of pinging off the body; a real shot still deflects.
+    const control = this.touchControl(p, len(rvx, rvy));
     if (vn < 0) {
-      const imp = -(1 + FEEL.ballPlayerBounce) * vn;
+      const bounce = FEEL.ballPlayerBounce + (FEEL.dribbleBounce - FEEL.ballPlayerBounce) * control;
+      const imp = -(1 + bounce) * vn;
       b.vx += nx * imp; b.vy += ny * imp;
     }
+    if (control > 0) {
+      // Kill some of the sideways slip too, so the ball settles at the feet.
+      const vt = (b.vx - p.vx) * -ny + (b.vy - p.vy) * nx;
+      const k = FEEL.trapGrip * control;
+      b.vx -= -ny * vt * k; b.vy -= nx * vt * k;
+    }
     // Dribble push: make sure the ball separates from a moving player.
+    const push = 40 + (FEEL.dribblePush - 40) * control;
     const pushN = p.vx * nx + p.vy * ny;
     const bn = b.vx * nx + b.vy * ny;
-    if (bn < pushN + 40) { b.vx += nx * (pushN + 40 - bn); b.vy += ny * (pushN + 40 - bn); }
+    if (bn < pushN + push) { b.vx += nx * (pushN + push - bn); b.vy += ny * (pushN + push - bn); }
     // A dashing player that runs into the ball gives it a real whack.
     if (p.dashTime > 0 && !p.effects.frozen && !p.effects.slide) {
       const extra = 180;
@@ -398,6 +410,60 @@ class Match {
       }
     }
     this.registerTouch(p, false);
+  }
+
+  /**
+   * How much of a body touch is a controlled one (0..1), given the ball's
+   * speed relative to the player. Dashing, stunned or frozen players and
+   * special-move balls get no control.
+   */
+  touchControl(p, relSpeed) {
+    const b = this.ball;
+    if (p.dashTime > 0 || p.effects.stun || p.effects.frozen || p.effects.slide) return 0;
+    if (b.effects.thunder || b.effects.laser || b.effects.giant) return 0;
+    return clamp((FEEL.trapHard - relSpeed) / (FEEL.trapHard - FEEL.trapSoft), 0, 1);
+  }
+
+  /**
+   * Close control (T-38): the player nearest a loose, slow ball at their feet
+   * keeps it there. Holding a direction steers it in front of you, so you can
+   * turn with the ball; standing still traps it. An opponent alongside halves
+   * the grip, and a fresh kick is never pulled back.
+   */
+  applyCarry(dt) {
+    const b = this.ball;
+    for (const p of this.players) p.carrying = false;
+    if (b.z > FEEL.headHeight || b.effects.thunder || b.effects.laser) return;
+    let best = null, bestD = Infinity;
+    for (const p of this.players) {
+      const d = len(b.x - p.x, b.y - p.y) - p.r - b.r;
+      if (d < bestD) { bestD = d; best = p; }
+    }
+    const p = best;
+    if (!p || bestD > FEEL.carryReach) return;
+    if (p.dashTime > 0 || p.effects.stun || p.effects.frozen || p.effects.slide || p.effects.sticky) return;
+    if (p.kickCooldown > FEEL.kickCooldown - 0.15) return;
+    if (len(b.vx - p.vx, b.vy - p.vy) > FEEL.carryMaxRel) return;
+    let mx = (p.input.right ? 1 : 0) - (p.input.left ? 1 : 0);
+    let my = (p.input.down ? 1 : 0) - (p.input.up ? 1 : 0);
+    const ml = len(mx, my);
+    const dx = b.x - p.x, dy = b.y - p.y, d = len(dx, dy) || 1;
+    if (ml) { mx /= ml; my /= ml; }
+    // No input, or running away from a ball behind you: just trap it where it is.
+    if (!ml || (mx * dx + my * dy) / d < -0.3) { mx = dx / d; my = dy / d; }
+    const reach = p.r + b.r + 2;
+    const tx = p.x + mx * reach, ty = p.y + my * reach;
+    let cx = (tx - b.x) * 9, cy = (ty - b.y) * 9;
+    const cl = len(cx, cy);
+    if (cl > 300) { cx *= 300 / cl; cy *= 300 / cl; }
+    const wantVx = p.vx + cx, wantVy = p.vy + cy;
+    let grip = FEEL.carryGrip;
+    for (const o of this.players) {
+      if (o.team !== p.team && len(o.x - b.x, o.y - b.y) < o.r + b.r + FEEL.carryReach + 6) { grip *= 0.5; break; }
+    }
+    const k = 1 - Math.pow(1 - grip, dt * 60);
+    b.vx += (wantVx - b.vx) * k; b.vy += (wantVy - b.vy) * k;
+    p.carrying = true;
   }
 
   /** Was the ball heading into p's goal before this touch? (uses the last recorded heading) */
@@ -429,7 +495,9 @@ class Match {
       if (al > 1) {
         ax /= al; ay /= al;
         const dot = ax * nx + ay * ny;
-        if (dot > 0.2) { nx = nx * 0.45 + ax * 0.55; ny = ny * 0.45 + ay * 0.55; const l = len(nx, ny); nx /= l; ny /= l; }
+        // A ball under control goes where you aim; a scrambled one less so.
+        const wa = p.carrying ? FEEL.carryAim : 0.55;
+        if (dot > (p.carrying ? 0 : 0.2)) { nx = nx * (1 - wa) + ax * wa; ny = ny * (1 - wa) + ay * wa; const l = len(nx, ny) || 1; nx /= l; ny /= l; }
       }
     }
     // Charge: 0 for a tap, 1 for a full hold.

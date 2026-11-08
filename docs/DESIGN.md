@@ -4,7 +4,7 @@ Owner: Alex Mercer (T-01)
 
 ## Elevator pitch
 
-Top-down 2D arena soccer, 3 vs 3, in the browser. Matches last three minutes
+Top-down 2D arena soccer, 4 vs 4, in the browser. Matches last three minutes
 by default. Walls keep the ball in play so there are no throw-ins and no
 stoppages except goals. Pickups spawn on the pitch and grant short, loud
 boosts. Any slot a human does not take is played by a bot.
@@ -14,8 +14,8 @@ boosts. Any slot a human does not take is played by a bot.
 1. **Lobby** (`/`): shows every room (waiting or in progress), its player
    count, whether it is locked, and lets you join, create, or enter an
    invite code. Invite links look like `/?invite=CODE` and skip the password.
-2. **Pre-match**: two team boards (Red, Blue) with three positions each
-   (GK, DEF, FWD). Click a slot to take it; click again to leave it. Bots
+2. **Pre-match**: two team boards (Red, Blue) with four positions each
+   (GK, DEF, MID, FWD). Click a slot to take it; click again to leave it. Bots
    fill the rest. The host edits rules and chooses which boosts are in the
    pool, then presses Start.
 3. **Match**: server simulates at 60 Hz, broadcasts snapshots at 30 Hz,
@@ -62,9 +62,24 @@ boosts. Any slot a human does not take is played by a bot.
 ## Positions and bots
 
 * **GK** stays on the goal line between ball and goal, rushes loose balls
-  in the box, and clears.
+  in the box, and clears. A loose ball sitting on the goal line behind the
+  keeper is swept out sideways past the post rather than touched in.
+
+## Ball control
+
+* **First touch**: a ball reaching you slower than ~260 u/s is cushioned
+  dead at your feet; above ~700 u/s it bounces off like a block. In between
+  it blends.
+* **Close control**: the player nearest a slow ball at their feet keeps it
+  there. Holding a direction steers it in front of you, so you can turn
+  with it; standing still traps it. An opponent alongside halves the grip.
+* **Aim**: a kick off a ball under control follows the mouse much more
+  closely (75% aim vs 55%).
+* Dashing, special-move balls and the giant ball skip all of this.
 * **DEF** holds a line between ball and own goal, challenges when the ball
   is in its half.
+* **MID** holds the middle third, wins balls that come near, plays the
+  forward in and shoots only from a clear look.
 * **FWD** chases the ball, aims shots at the far post, and spreads out
   when a team-mate is closer to the ball.
 

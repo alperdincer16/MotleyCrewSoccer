@@ -18,7 +18,8 @@
 
   // Feel constants (not player-facing rules).
   const FEEL = {
-    playerAccel: 2600,       // units/s^2
+    playerAccel: 3000,       // units/s^2 (was 2600; snappier starts, T-38)
+    turnAssist: 1.5,         // extra accel when pushing against your own momentum
     playerMaxSpeed: 270,     // units/s at playerSpeed 1.0
     playerDamping: 0.88,     // per 1/60 s when no input
     playerMoveDamping: 0.96, // per 1/60 s while pushing a direction
@@ -58,6 +59,16 @@
     bumperOrbit: 120,
     bumperPeriod: 12,        // seconds per orbit
     bumperKick: 1.25,        // ball leaves a bumper faster than it arrived
+    // Ball control (T-38)
+    trapSoft: 260,           // incoming balls slower than this are fully cushioned
+    trapHard: 700,           // ...and faster than this bounce off like before
+    dribbleBounce: 0.08,     // restitution of a cushioned touch
+    dribblePush: 12,         // how much faster than you a cushioned touch rolls (was a flat 40)
+    trapGrip: 0.55,          // share of sideways spin a cushioned touch kills
+    carryReach: 12,          // ball within this of your feet is "on your foot"
+    carryMaxRel: 240,        // ...if it moves slower than this relative to you
+    carryGrip: 0.22,         // per 1/60 s pull of the ball toward the carry point
+    carryAim: 0.75,          // kick-direction weight given to your aim while carrying (0.55 otherwise)
   };
 
   /** Arena feel multipliers for the current rules. */
@@ -137,8 +148,12 @@
     const mul = speedMul(rules, st, traits) * arena.speed;
     if (moving) {
       const l = len(dx, dy); dx /= l; dy /= l;
-      p.vx += dx * FEEL.playerAccel * arena.accel * mul * dt;
-      p.vy += dy * FEEL.playerAccel * arena.accel * mul * dt;
+      // Turning against your own momentum bites harder, so cuts and stops are sharp.
+      const sp0 = len(p.vx, p.vy);
+      const against = sp0 > 1 ? -(p.vx * dx + p.vy * dy) / sp0 : 0;   // 1 = straight back
+      const turn = against > 0 ? 1 + (FEEL.turnAssist - 1) * against : 1;
+      p.vx += dx * FEEL.playerAccel * arena.accel * mul * turn * dt;
+      p.vy += dy * FEEL.playerAccel * arena.accel * mul * turn * dt;
     }
 
     let dashed = false;

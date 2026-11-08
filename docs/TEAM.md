@@ -54,6 +54,9 @@ recorded here, in the header comment of each source file, and in the
 | T-34 | Tests for T-27 to T-33 | Rosa Vidal | Done |
 | T-35 | UI polish pass: shared tokens for spacing, radii and type; consistent buttons, inputs and selects; lobby, create dialog, pre-match room, HUD, results and player card tidied; pitch fits the window; phone layouts; readable team colours on dark UI | Sam Okafor | Done |
 | T-36 | Real soccer ball: shaded truncated-icosahedron pattern that rolls in 3D with the ball's movement and spins on curved shots (rendering only) | Tomasz Nowak | Done |
+| T-37 | 4v4: midfielder (MID) slot, formation, MID bot brain, keeper sweeps loose balls off the goal line | Mei Lin (bots) / Diego Ferreira (formation) | Done |
+| T-38 | Ball control: cushioned first touch, close dribbling with turning, aim-true kicks off a controlled ball, snappier turns | Diego Ferreira | Done |
+| T-39 | Tests for T-37 and T-38 | Rosa Vidal | Done |
 
 ## Working agreements
 

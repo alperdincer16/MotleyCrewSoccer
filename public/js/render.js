@@ -143,7 +143,7 @@
       ctx.font = 'bold 10px system-ui, sans-serif'; ctx.textBaseline = 'middle';
       for (const by of boardY) {
         ctx.fillStyle = '#0f1318'; ctx.fillRect(-28, by, W + 56, 14);
-        const texts = ['MOTLEY CREW SOCCER', this.teamNames.red, 'BOOSTS ON', this.teamNames.blue, '3 v 3', 'GOLDEN GOAL'];
+        const texts = ['MOTLEY CREW SOCCER', this.teamNames.red, 'BOOSTS ON', this.teamNames.blue, '4 v 4', 'GOLDEN GOAL'];
         for (let i = 0; i < 6; i++) {
           const x0 = -28 + i * (W + 56) / 6;
           ctx.fillStyle = i % 2 ? '#1f2a36' : '#2a1f36'; ctx.fillRect(x0 + 2, by + 1, (W + 56) / 6 - 4, 12);
@@ -430,7 +430,7 @@
       ctx.fillStyle = this.teamColors[team];
       ctx.beginPath(); ctx.roundRect(p.x - tw / 2 - 18, top - 20, 16, 16, 4); ctx.fill();
       ctx.fillStyle = '#fff'; ctx.font = 'bold 10px system-ui, sans-serif'; ctx.textBaseline = 'middle';
-      ctx.fillText(pos === 'GK' ? 'G' : pos === 'DEF' ? 'D' : 'F', p.x - tw / 2 - 10, top - 12);
+      ctx.fillText(pos[0], p.x - tw / 2 - 10, top - 12);
       ctx.textBaseline = 'alphabetic';
 
       // Local-player marker + dash cooldown arc

@@ -1,7 +1,7 @@
 {
   "name": "motley-crew-soccer",
   "version": "0.1.0",
-  "description": "Fast-paced 2D online 3v3 soccer with custom rules and boosts",
+  "description": "Fast-paced 2D online 4v4 soccer with custom rules and boosts",
   "main": "server/index.js",
   "type": "commonjs",
   "scripts": {
