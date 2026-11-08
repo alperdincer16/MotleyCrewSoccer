@@ -286,7 +286,7 @@
       const humansSeated = room.players.filter(p => p.slot).length;
       const notReady = room.players.filter(p => p.slot && !p.ready).length;
       $('startHint').textContent = host
-        ? `${humansSeated} human${humansSeated === 1 ? '' : 's'} seated, ${6 - humansSeated} bot${6 - humansSeated === 1 ? '' : 's'}${notReady ? ` · ${notReady} not ready yet` : ''}. You can start whenever you like.`
+        ? `${humansSeated} human${humansSeated === 1 ? '' : 's'} seated, ${MCS.TEAMS.length * MCS.TEAM_SIZE - humansSeated} bot${MCS.TEAMS.length * MCS.TEAM_SIZE - humansSeated === 1 ? '' : 's'}${notReady ? ` · ${notReady} not ready yet` : ''}. You can start whenever you like.`
         : 'Waiting for the host to start the match.';
       $('btnStart').onclick = () => this.net.send(room.status === 'ended' ? 'rematch' : 'startGame');
 
