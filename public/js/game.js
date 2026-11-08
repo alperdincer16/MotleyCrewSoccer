@@ -84,7 +84,8 @@
         if (pid) continue;
         const b = document.createElement('button');
         const { team, pos } = MCS.parseSlot(slot);
-        b.textContent = `${team.toUpperCase()} ${pos}`;
+        if (window.spriteAvatar) b.appendChild(window.spriteAvatar(team, pos, `${team.toUpperCase()} ${pos} bot`, 2));
+        b.appendChild(document.createTextNode(`${team.toUpperCase()} ${pos}`));
         b.style.borderColor = team === 'red' ? 'var(--red)' : 'var(--blue)';
         b.onclick = () => this.net.send('pickSlot', { slot });
         this.el.spectatorSlots.appendChild(b);

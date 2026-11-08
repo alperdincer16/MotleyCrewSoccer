@@ -62,3 +62,14 @@ boosts. Any slot a human does not take is played by a bot.
   is in its half.
 * **FWD** chases the ball, aims shots at the far post, and spreads out
   when a team-mate is closer to the ball.
+
+## Art direction
+
+Players are 14×20 pixel-art sprites in the style of 16-bit football games:
+big heads, team kits (red with white stripes, blue with white sleeves),
+shorts, socks and boots, with an automatically generated one-pixel outline.
+Skin tone, hair colour and hairstyle are derived from the player's name so a
+person always looks the same; goalkeepers wear dark trim and gloves. Sprites
+have stand, two walk and one kick frame, flip to face their direction of
+travel, and turn icy blue while frozen. The same sprites appear as avatars on
+the pre-match slot cards and the spectator take-over bar.

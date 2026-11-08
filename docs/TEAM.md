@@ -33,6 +33,7 @@ recorded here, in the header comment of each source file, and in the
 | T-13 | Pre-match UI: team boards, slot picking, rules editor, boost toggles | Sam Okafor | Done |
 | T-14 | In-game HUD, results screen, mid-match join (claim a bot slot) | Sam Okafor | Done |
 | T-15 | Canvas renderer: pitch, players, ball, pickups, effects, camera shake | Tomasz Nowak | Done |
+| T-19 | 16-bit style pixel-art player sprites: kits, skin/hair variety, walk and kick frames, slot avatars | Tomasz Nowak | Done |
 | T-16 | Procedural audio: whistle, kick, goal horn, pickup chime | Tomasz Nowak | Done |
 | T-17 | Unit tests: physics, rules, boosts, lobby/room flow | Rosa Vidal | Done |
 | T-18 | Headless bot-vs-bot soak test (full match completes, no NaNs) | Rosa Vidal | Done |

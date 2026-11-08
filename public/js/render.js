@@ -28,6 +28,7 @@
       this.time = 0;
       this.pitchCache = null;
       this.goalWidth = 180;
+      this.facing = new Map();   // player id -> facing left?
     }
 
     setGoalWidth(gw) { if (gw !== this.goalWidth) { this.goalWidth = gw; this.pitchCache = null; } }
@@ -149,10 +150,11 @@
       for (const pk of view.pickups) this.drawPickup(pk);
       // Shadows
       ctx.fillStyle = 'rgba(0,0,0,.25)';
-      for (const p of view.players) { ctx.beginPath(); ctx.ellipse(p.x + 3, p.y + 5, p.r, p.r * 0.8, 0, 0, Math.PI * 2); ctx.fill(); }
+      for (const p of view.players) { ctx.beginPath(); ctx.ellipse(p.x, p.y + p.r * 0.9, p.r * 0.95, p.r * 0.35, 0, 0, Math.PI * 2); ctx.fill(); }
       ctx.beginPath(); ctx.ellipse(view.ball.x + 3, view.ball.y + 5, view.ball.r, view.ball.r * 0.8, 0, 0, Math.PI * 2); ctx.fill();
 
-      for (const p of view.players) this.drawPlayer(p, p.id === opts.mySlot);
+      const sorted = view.players.slice().sort((a, b) => a.y - b.y);
+      for (const p of sorted) this.drawPlayer(p, p.id === opts.mySlot);
       this.drawBall(view.ball, dt);
       this.drawParticles();
     }
@@ -176,37 +178,46 @@
 
     drawPlayer(p, isMe) {
       const ctx = this.ctx, team = p.id.split(':')[0], pos = p.id.split(':')[1];
-      const fill = team === 'red' ? COLORS.red : COLORS.blue, dark = team === 'red' ? COLORS.redDark : COLORS.blueDark;
       const fx = p.fx || 0;
+      const speed = Math.hypot(p.vx, p.vy);
 
       // Effect auras under the body
       if (fx & FX.shield) { ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 7, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(72,202,228,.9)'; ctx.lineWidth = 3; ctx.setLineDash([6, 4]); ctx.lineDashOffset = -this.time * 40; ctx.stroke(); ctx.setLineDash([]); }
       if (fx & FX.magnet) { ctx.beginPath(); ctx.arc(p.x, p.y, 170, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(255,159,28,.25)'; ctx.lineWidth = 2; ctx.setLineDash([10, 10]); ctx.lineDashOffset = this.time * 60; ctx.stroke(); ctx.setLineDash([]); }
       if (fx & FX.speed) { for (let i = 1; i <= 3; i++) { ctx.beginPath(); ctx.arc(p.x - p.vx * 0.012 * i, p.y - p.vy * 0.012 * i, p.r * (1 - i * 0.15), 0, Math.PI * 2); ctx.fillStyle = `rgba(255,209,102,${0.35 - i * 0.1})`; ctx.fill(); } }
       if (fx & FX.rocket) { const g = ctx.createRadialGradient(p.x, p.y, p.r, p.x, p.y, p.r * 2); g.addColorStop(0, 'rgba(239,71,111,.6)'); g.addColorStop(1, 'rgba(239,71,111,0)'); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(p.x, p.y, p.r * 2, 0, Math.PI * 2); ctx.fill(); }
+      if (isMe) { ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 2, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(255,209,102,.45)'; ctx.lineWidth = 2; ctx.stroke(); }
 
-      // Body
-      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-      ctx.fillStyle = (fx & FX.frozen) ? '#b8e3f5' : fill; ctx.fill();
-      ctx.lineWidth = 3; ctx.strokeStyle = (fx & FX.frozen) ? '#5aa9d6' : dark; ctx.stroke();
-      // Kick flash ring
-      if (p.kf) { ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 4, 0, Math.PI * 2); ctx.strokeStyle = '#fff'; ctx.lineWidth = 2; ctx.stroke(); }
-      // Position letter
-      ctx.fillStyle = (fx & FX.frozen) ? '#1b4a63' : '#fff';
-      ctx.font = `bold ${Math.round(p.r * 0.85)}px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      ctx.fillText(pos === 'GK' ? 'G' : pos === 'DEF' ? 'D' : 'F', p.x, p.y + 1);
+      // Facing: remember the last horizontal direction so idle players don't flip.
+      if (p.vx < -25) this.facing.set(p.id, true); else if (p.vx > 25) this.facing.set(p.id, false);
+      const flip = !!this.facing.get(p.id);
+      // Animation frame: kick pose while the kick flash is on, else walk cycle.
+      let frame = 0;
+      if (p.kf) frame = 3;
+      else if (speed > 25) frame = Math.floor(this.time * (6 + speed / 40)) % 2 + 1;
+
+      const scale = (p.r * 2 * 1.35) / Sprites.H;
+      const feetY = p.y + p.r * 0.9;
+      Sprites.draw(ctx, { team, pos, name: p.name, frame, frozen: !!(fx & FX.frozen) }, p.x, feetY, scale, flip);
+      const top = feetY - Sprites.H * scale;
 
       // Name tag
-      ctx.font = `${isMe ? 'bold ' : ''}12px system-ui, sans-serif`; ctx.textBaseline = 'alphabetic';
+      ctx.font = `${isMe ? 'bold ' : ''}12px system-ui, sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
       ctx.fillStyle = 'rgba(0,0,0,.55)';
-      const label = p.bot ? '🤖 ' + p.name : p.name;
+      const label = (p.bot ? '🤖 ' : '') + p.name;
       const tw = ctx.measureText(label).width + 10;
-      ctx.beginPath(); ctx.roundRect(p.x - tw / 2, p.y - p.r - 22, tw, 16, 6); ctx.fill();
-      ctx.fillStyle = isMe ? '#ffd166' : '#fff'; ctx.fillText(label, p.x, p.y - p.r - 10);
+      ctx.beginPath(); ctx.roundRect(p.x - tw / 2, top - 20, tw, 16, 6); ctx.fill();
+      ctx.fillStyle = isMe ? '#ffd166' : '#fff'; ctx.fillText(label, p.x, top - 8);
+      // Position badge
+      ctx.fillStyle = team === 'red' ? COLORS.red : COLORS.blue;
+      ctx.beginPath(); ctx.roundRect(p.x - tw / 2 - 18, top - 20, 16, 16, 4); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 10px system-ui, sans-serif'; ctx.textBaseline = 'middle';
+      ctx.fillText(pos === 'GK' ? 'G' : pos === 'DEF' ? 'D' : 'F', p.x - tw / 2 - 10, top - 12);
+      ctx.textBaseline = 'alphabetic';
 
       // Local-player marker + dash cooldown arc
       if (isMe) {
-        ctx.beginPath(); ctx.moveTo(p.x, p.y - p.r - 30); ctx.lineTo(p.x - 6, p.y - p.r - 38); ctx.lineTo(p.x + 6, p.y - p.r - 38); ctx.closePath();
+        ctx.beginPath(); ctx.moveTo(p.x, top - 26); ctx.lineTo(p.x - 6, top - 34); ctx.lineTo(p.x + 6, top - 34); ctx.closePath();
         ctx.fillStyle = '#ffd166'; ctx.fill();
         if (p.dash > 0) {
           ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - p.dash));

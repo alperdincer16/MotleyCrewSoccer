@@ -50,7 +50,7 @@ server/lobby.js      room registry: list / create / join / invite
 server/room.js       room state machine, 60 Hz loop, 30 Hz snapshots
 server/game/match.js authoritative physics, rules engine, boosts
 server/game/ai.js    bot brains for GK / DEF / FWD
-public/js/*.js       net, audio, renderer, game client, lobby + pre-match UI
+public/js/*.js       net, audio, pixel-art sprites, renderer, game client, lobby + pre-match UI
 test/                node:test suites (rules, match engine, room flow, soak)
 ```
 

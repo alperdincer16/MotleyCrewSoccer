@@ -99,6 +99,8 @@ details .rules-grid { margin-top: 12px; }
 .slot { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; background: var(--bg2); border: 1px solid var(--line); cursor: pointer; transition: background .15s; }
 .slot:hover { background: #222a34; }
 .slot .pos { font-weight: 800; width: 44px; letter-spacing: 1px; }
+.slot .avatar { image-rendering: pixelated; width: 42px; height: 60px; flex: none; }
+#spectatorBar .avatar { image-rendering: pixelated; width: 21px; height: 30px; vertical-align: middle; margin-right: 4px; }
 .slot .who { flex: 1; }
 .slot .who small { display: block; color: var(--muted); }
 .slot.bot .who { color: var(--muted); font-style: italic; }

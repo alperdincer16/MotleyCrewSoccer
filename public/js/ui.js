@@ -7,6 +7,16 @@
   const MCS = window.MCS;
   const $ = (id) => document.getElementById(id);
 
+  /** Small pixel-art avatar canvas for lists and slot cards. */
+  function avatar(team, pos, name, scale) {
+    const c = el('canvas', 'avatar');
+    c.width = Sprites.W * scale; c.height = Sprites.H * scale;
+    const ctx = c.getContext('2d');
+    Sprites.draw(ctx, { team, pos, name, frame: 0 }, c.width / 2, c.height - scale, scale, false);
+    return c;
+  }
+  window.spriteAvatar = avatar;
+
   function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
 
   /**
@@ -172,6 +182,7 @@
           const pid = room.slots[sid];
           const p = pid && room.players.find(x => x.id === pid);
           const slot = el('div', 'slot' + (p ? ' taken' : ' bot') + (pid === this.net.id ? ' mine' : ''));
+          slot.appendChild(avatar(team, pos, p ? p.name : `${team.toUpperCase()} ${pos} bot`, 3));
           slot.appendChild(el('span', 'pos', pos));
           const who = el('span', 'who');
           if (p) { who.appendChild(document.createTextNode(p.name + (p.connected ? '' : ' (reconnecting…)'))); who.appendChild(el('small', null, pid === this.net.id ? 'You · click to leave the slot' : 'Human')); }
