@@ -68,6 +68,7 @@
       this.snaps = []; this.inputHistory = []; this.replay = null; this.lastPred = null; this.clock.offset = null;
       this.predErr = { x: 0, y: 0 };
       this.active = true;
+      if (this.renderer.crowd) this.renderer.crowd.reset();
       this.el.results.classList.add('hidden');
       this.hideBanner();
       this.setScore(0, 0); this.setClock(this.rules.matchSeconds, '');
@@ -79,7 +80,7 @@
       this.kits = Teams.resolveKits(this.sides.red, this.sides.blue);
       this.teamColors = { red: Teams.sideColor(this.kits.red), blue: Teams.sideColor(this.kits.blue) };
       this.traits = { red: Teams.traitsFor(this.sides.red), blue: Teams.traitsFor(this.sides.blue) };
-      this.renderer.setTeams(this.kits, this.teamColors);
+      this.renderer.setTeams(this.kits, this.teamColors, { red: this.nationName('red').toUpperCase(), blue: this.nationName('blue').toUpperCase() });
       document.documentElement.style.setProperty('--teamRed', this.teamColors.red);
       document.documentElement.style.setProperty('--teamBlue', this.teamColors.blue);
     }
@@ -87,6 +88,7 @@
 
     stop() {
       this.active = false;
+      this.audio.setCrowd(0);
       if (this.raf) { cancelAnimationFrame(this.raf); this.raf = null; }
       this.el.mobile.classList.add('hidden');
     }
@@ -285,17 +287,22 @@
             R.burst(e.x, e.y, { n: 6 + Math.round(e.power * 4), color: e.rocket ? '#ef476f' : '#fff', speed: 120 * e.power });
             this.audio.kick(e.power, e.rocket);
             if (e.rocket) R.kickShake(8); else if (e.slot === this.mySlot) R.kickShake(2.5);
+            if (R.crowd && e.rocket) R.crowd.pulse(null, 0.3);
             break;
-          case 'bounce': R.burst(e.x, e.y, { n: 4, color: 'rgba(255,255,255,.6)', speed: 60 }); this.audio.bounce(e.speed, e.post); if (e.post) R.kickShake(3); break;
+          case 'bounce':
+            R.burst(e.x, e.y, { n: 4, color: 'rgba(255,255,255,.6)', speed: 60 }); this.audio.bounce(e.speed, e.post);
+            if (e.post) { R.kickShake(3); if (R.crowd) R.crowd.gasp(); if (e.speed > 350) this.audio.gasp(); }
+            break;
           case 'dash': R.burst(e.x, e.y, { n: 8, color: 'rgba(255,255,255,.5)', speed: 90 }); this.audio.dash(); break;
           case 'whistle': this.audio.whistle(false); if (!snap.sd) this.hideBanner(); this.replay = null; break;
           case 'kickoffOpen': this.toast('Kick-off opened: anyone can play the ball'); break;
-          case 'suddenDeath': this.showBanner('SUDDEN DEATH', 'Next goal wins', 'gold', 2500); this.audio.whistle(false); break;
+          case 'suddenDeath': this.showBanner('SUDDEN DEATH', 'Next goal wins', 'gold', 2500); this.audio.whistle(false); if (R.crowd) R.crowd.pulse(null, 0.5); break;
           case 'spawn': R.burst(e.x, e.y, { n: 12, color: MCS.BOOSTS[e.boost].color, speed: 100 }); break;
           case 'pickup': {
             const b = MCS.BOOSTS[e.boost];
             R.burst(e.x, e.y, { n: 24, color: b.color, speed: 220, life: 0.7 });
             this.audio.pickup(); if (e.boost === 'freeze') this.audio.freeze();
+            if (R.crowd) R.crowd.pulse(e.team, 0.25);
             this.toast(`${b.icon} ${this.playerName(e.slot)} got ${b.label}`, e.team);
             break;
           }
@@ -303,6 +310,8 @@
             const color = this.teamColors ? this.teamColors[e.team] : (e.team === 'red' ? Renderer.COLORS.red : Renderer.COLORS.blue);
             R.confetti(e.x, e.y, color); R.kickShake(18);
             this.audio.goal(myTeam ? e.team === myTeam : true);
+            this.audio.cheer(e.ownGoal ? 0.7 : 1);
+            if (R.crowd) R.crowd.goal(e.team, e.ownGoal);
             const who = e.scorer ? this.playerName(e.scorer) : 'Nobody';
             let sub = e.ownGoal ? `Own goal by ${who}` : `${who}${e.assist ? ' · assist ' + this.playerName(e.assist) : ''}`;
             if (e.speed > 850) sub += ' · ROCKET!';
@@ -310,7 +319,7 @@
             this.startReplay(now);
             break;
           }
-          case 'end': this.audio.end(); this.replay = null; break;
+          case 'end': this.audio.end(); this.replay = null; if (R.crowd) R.crowd.end(e.winner); this.audio.cheer(e.winner === 'draw' ? 0.5 : 0.9); break;
         }
       }
     }
@@ -328,6 +337,8 @@
       this.el.clockTag.textContent = tag;
       const urgent = snap && !snap.sd && seconds <= 10 && seconds > 0 && snap.state !== 'countdown';
       this.el.clock.classList.toggle('urgent', !!urgent);
+      if (this.renderer.crowd) this.renderer.crowd.setClapping(!!urgent);
+      if (urgent && s !== this._lastClockSecond) this.audio.clap();
       if (urgent && s !== this._lastClockSecond && s <= 5) this.audio.tick();
       this._lastClockSecond = s;
     }
@@ -478,6 +489,7 @@
         } else this.lastPred = null;
       }
       this.renderer.draw(view, { mySlot: this.mySlot, dt, replay: !!(view && view._replay) });
+      if (this.renderer.crowd) this.audio.setCrowd(this.renderer.crowd.level());
       if (this.el.netInfo && (now - (this._netInfoAt || 0)) > 500) {
         this._netInfoAt = now;
         this.el.netInfo.textContent = `${this.net.pingMs} ms · ${Math.round(this.interp.delay)} ms buffer`;

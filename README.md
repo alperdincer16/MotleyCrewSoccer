@@ -13,6 +13,8 @@ seat a human doesn't take.
   long, Italy parks the bus). Pick both sides when creating a game or in the
   pre-match room; clashing kits switch
   to the alternate automatically.
+* **Stadium crowd**: thousands of pixel fans who cheer, gasp, clap, slump and
+  start a Mexican wave depending on what is happening on the pitch.
 * **Live join**: open a game in progress and take over any bot slot.
 * **Rules** are all host-editable: match length, goal limit, sudden death,
   mercy rule, goal width, speed, kick power, ball physics, dash, pickups, bot skill.

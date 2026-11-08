@@ -149,3 +149,28 @@ which forwards shoot rather than look for a pass), `defLine` (how high the
 defender holds), `gkRush` (how far and how fast a ball the keeper will come
 for), `dash` (how often bots dash into duels) and `flair` (shot placement
 variance).
+
+## Stadium and crowd
+
+The arena sits inside four stands of pixel fans (about 2,000 seats across
+four rows per side) behind advertising hoardings that carry the fixture.
+Fans behind each goal support that side; the long stands are split home
+end left and away end right with neutrals mixed in. Every fan has a seat,
+a shirt colour derived from the nation's colour, a skin tone and a phase.
+
+The crowd is driven by a per-side excitement value:
+
+* Tension rises as the ball gets closer to a goal and faster toward it. The
+  attacking side's fans anticipate more than the defending side's fans fret.
+* A goal makes the scorers' fans leap with arms up and wave flags for about
+  four seconds while the conceding end goes silent and slumps.
+* Hitting the post makes the whole ground flinch (a gasp).
+* Pickups and rocket kicks send a ripple through the collector's fans.
+* The final ten seconds switch everyone to unison clapping on the beat.
+* At full time the winners' fans celebrate and the losers sit.
+* When nothing happens for nine seconds a Mexican wave travels once around
+  the ground.
+
+Audio follows the same excitement value: a looping pink-noise murmur whose
+level and brightness track the crowd, a roar on goals and at full time, an
+"ooh" on the post, and claps on each of the last ten seconds.

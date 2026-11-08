@@ -21,7 +21,10 @@
   class Renderer {
     constructor(canvas) {
       this.canvas = canvas;
+      canvas.width = W + 2 * M; canvas.height = H + 2 * M;
       this.ctx = canvas.getContext('2d');
+      this.crowd = window.Crowd ? new Crowd() : null;
+      this.teamNames = { red: 'RED', blue: 'BLUE' };
       this.particles = [];
       this.shake = 0;
       this.ballSpin = 0;
@@ -34,7 +37,11 @@
     }
 
     setGoalWidth(gw) { if (gw !== this.goalWidth) { this.goalWidth = gw; this.pitchCache = null; } }
-    setTeams(kits, colors) { this.kits = kits; this.teamColors = colors; this.pitchCache = null; }
+    setTeams(kits, colors, names) {
+      this.kits = kits; this.teamColors = colors; this.pitchCache = null;
+      if (names) this.teamNames = names;
+      if (this.crowd) this.crowd.setColors(colors);
+    }
 
     // ---- Particles ---------------------------------------------------------
     burst(x, y, { n = 10, color = '#fff', speed = 180, life = 0.5, size = 3, gravity = 0 } = {}) {
@@ -75,6 +82,36 @@
       ctx.fillStyle = '#0b0e12'; ctx.fillRect(0, 0, c.width, c.height);
 
       ctx.save(); ctx.translate(M, M);
+      // Stands: concrete terraces behind the hoardings, stepped rows.
+      ctx.fillStyle = '#1a1f26'; ctx.fillRect(-M, -M, W + 2 * M, H + 2 * M);
+      for (let r = 0; r < 4; r++) {
+        const inset = 30 + r * 16;
+        ctx.fillStyle = r % 2 ? '#20262e' : '#242b34';
+        ctx.fillRect(-inset - 16, -inset - 16, W + 2 * (inset + 16), 16);
+        ctx.fillRect(-inset - 16, H + inset, W + 2 * (inset + 16), 16);
+        ctx.fillRect(-inset - 16, -inset, 16, H + 2 * inset);
+        ctx.fillRect(W + inset, -inset, 16, H + 2 * inset);
+      }
+      // Hoardings: advertising boards between the wall and the front row.
+      const boardY = [-28, H + 14];
+      ctx.font = 'bold 10px system-ui, sans-serif'; ctx.textBaseline = 'middle';
+      for (const by of boardY) {
+        ctx.fillStyle = '#0f1318'; ctx.fillRect(-28, by, W + 56, 14);
+        const texts = ['MOTLEY CREW SOCCER', this.teamNames.red, 'BOOSTS ON', this.teamNames.blue, '3 v 3', 'GOLDEN GOAL'];
+        for (let i = 0; i < 6; i++) {
+          const x0 = -28 + i * (W + 56) / 6;
+          ctx.fillStyle = i % 2 ? '#1f2a36' : '#2a1f36'; ctx.fillRect(x0 + 2, by + 1, (W + 56) / 6 - 4, 12);
+          ctx.fillStyle = i === 1 ? this.teamColors.red : i === 3 ? this.teamColors.blue : '#d7dde6';
+          ctx.textAlign = 'center'; ctx.fillText(texts[i], x0 + (W + 56) / 12, by + 7);
+        }
+      }
+      for (const bx of [-28, W + 14]) {
+        ctx.fillStyle = '#0f1318'; ctx.fillRect(bx, -14, 14, H + 28);
+        ctx.save(); ctx.translate(bx + 7, H / 2); ctx.rotate(bx < 0 ? -Math.PI / 2 : Math.PI / 2);
+        ctx.fillStyle = bx < 0 ? this.teamColors.red : this.teamColors.blue; ctx.textAlign = 'center';
+        ctx.fillText((bx < 0 ? this.teamNames.red : this.teamNames.blue) + ' END', 0, 0);
+        ctx.restore();
+      }
       // Arena walls (rounded rect) with goal pockets cut out
       const arena = new Path2D();
       arena.roundRect(-8, -8, W + 16, H + 16, cr + 8);
@@ -142,6 +179,7 @@
       const sx = (Math.random() - 0.5) * this.shake, sy = (Math.random() - 0.5) * this.shake;
       ctx.drawImage(this.pitchCache, sx, sy);
       ctx.translate(M + sx, M + sy);
+      if (this.crowd) { this.crowd.update(dt, view); this.crowd.draw(ctx); }
       if (!view) return;
 
       // Kickoff: dim the half the non-kicking team may not enter.
