@@ -75,7 +75,7 @@
       const big = document.createElement('canvas');
       const R = new Renderer(big);
       R.setTeams(h.kits, h.teamColors, { red: (Teams.get(h.sides.red) || {}).name.toUpperCase(), blue: (Teams.get(h.sides.blue) || {}).name.toUpperCase() });
-      R.setArena(h.rules.arena); R.setWeather(h.rules.weather); R.rules = h.rules; R.looks = h.looks;
+      R.setArena(h.rules.arena); R.setWeather(h.rules.weather); R.setVenue(h.rules.venue); R.rules = h.rules; R.looks = h.looks;
       const out = document.createElement('canvas'); out.width = OUT_W; out.height = OUT_H;
       const octx = out.getContext('2d', { willReadFrequently: true });
       const first = h.snaps[0].recv, last = h.snaps[h.snaps.length - 1].recv;

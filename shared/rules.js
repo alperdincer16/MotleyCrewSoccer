@@ -52,7 +52,8 @@
     maxPickups:      { label: 'Max pickups on pitch',    kind: 'number', def: 2,     min: 1,   max: 5,   step: 1, group: 'boosts' },
     kickoffPause:    { label: 'Goal replay + pause (s)', kind: 'number', def: 5.5,   min: 0.5, max: 10,  step: 0.5, group: 'advanced' },
     botSkill:        { label: 'Bot skill ×',             kind: 'number', def: 1.0,   min: 0.5, max: 1.5, step: 0.1, group: 'match' },
-    arena:           { label: 'Location',                kind: 'enum',   def: 'classic', options: ['classic', 'ice', 'mud', 'bumpers'], group: 'match' },
+    venue:           { label: 'Location',                kind: 'enum',   def: 'national', options: ['national', 'oldtown', 'seaside', 'alpine', 'rooftop', 'desert'], group: 'match' },
+    arena:           { label: 'Special pitch',           kind: 'enum',   def: 'classic', options: ['classic', 'ice', 'mud', 'bumpers'], group: 'advanced' },
     weather:         { label: 'Weather',                 kind: 'enum',   def: 'clear',   options: ['clear', 'wind', 'rain', 'snow', 'night'], group: 'match' },
     specials:        { label: 'Signature moves',         kind: 'bool',   def: true, group: 'match' },
     chaosEvents:     { label: 'Chaos events',            kind: 'bool',   def: true, group: 'match' },
@@ -63,7 +64,7 @@
   // Feel multipliers applied by shared/physics.js (players, so the client can
   // predict them) and server/game/match.js (ball, wind).
   const ARENAS = {
-    classic: { label: 'Classic',  icon: '🏟️', desc: 'Fresh grass, no surprises.',
+    classic: { label: 'Off (grass)', icon: '🌱', desc: 'A normal grass pitch.',
       accel: 1, speed: 1, moveDamp: null, idleDamp: null, ballDrag: 0, ballBounce: 1 },
     ice:     { label: 'Ice rink', icon: '🧊', desc: 'Players slide and the ball barely slows down.',
       accel: 0.5, speed: 1.08, moveDamp: 0.993, idleDamp: 0.985, ballDrag: 0.005, ballBounce: 1.05 },
@@ -73,19 +74,31 @@
       accel: 1, speed: 1, moveDamp: null, idleDamp: null, ballDrag: 0, ballBounce: 1 },
   };
 
+  // ---- Locations (T-46) -------------------------------------------------------
+  // Where the match is played. Purely visual (stands, hoardings, mowing
+  // pattern): the palettes live in public/js/render.js.
+  const VENUES = {
+    national: { label: 'National Stadium', icon: '🏟️', desc: 'Grey concrete tiers and classic stripes.' },
+    oldtown:  { label: 'Old Town Ground',  icon: '🧱', desc: 'Red-brick terraces and a narrow-striped pitch.' },
+    seaside:  { label: 'Seaside Arena',    icon: '🌊', desc: 'Teal stands by the beach, diagonal mowing.' },
+    alpine:   { label: 'Alpine Park',      icon: '🏔️', desc: 'Timber stands under the peaks and a chequerboard pitch.' },
+    rooftop:  { label: 'Rooftop Cage',     icon: '🏙️', desc: 'Five-a-side on a city roof: steel fence and neon boards.' },
+    desert:   { label: 'Desert Bowl',      icon: '🏜️', desc: 'Sandstone tiers and rings mowed into the grass.' },
+  };
+
   // ---- Weather (T-45) ---------------------------------------------------------
   // Picked alongside the location. Multipliers stack on the location's feel
   // in shared/physics.js; wind gusts are driven by server/game/match.js.
   const WEATHER = {
-    clear: { label: 'Clear',  icon: '☀️', desc: 'Dry pitch, good light.',
+    clear: { label: 'Clear',  icon: '☀️', short: 'Dry, good light', desc: 'Dry pitch, good light.',
       accel: 1, speed: 1, ballDrag: 0, ballBounce: 1 },
-    wind:  { label: 'Windy',  icon: '🌬️', desc: 'Gusts change direction and push the ball around. Lobs drift the most.',
+    wind:  { label: 'Windy',  icon: '🌬️', short: 'Gusts push the ball', desc: 'Gusts change direction and push the ball around. Lobs drift the most.',
       accel: 1, speed: 1, ballDrag: 0, ballBounce: 1 },
-    rain:  { label: 'Rain',   icon: '🌧️', desc: 'A slick pitch: the ball skids on and bounces lower, footing is a touch looser.',
+    rain:  { label: 'Rain',   icon: '🌧️', short: 'Skidding ball, low bounce', desc: 'A slick pitch: the ball skids on and bounces lower, footing is a touch looser.',
       accel: 0.9, speed: 1, ballDrag: 0.002, ballBounce: 0.85 },
-    snow:  { label: 'Snow',   icon: '❄️', desc: 'The ball holds up in the snow and everyone is a little slower.',
+    snow:  { label: 'Snow',   icon: '❄️', short: 'Slower legs and ball', desc: 'The ball holds up in the snow and everyone is a little slower.',
       accel: 0.92, speed: 0.93, ballDrag: -0.004, ballBounce: 0.8 },
-    night: { label: 'Night',  icon: '🌙', desc: 'Under the floodlights. Plays like a clear day.',
+    night: { label: 'Night',  icon: '🌙', short: 'Under the floodlights', desc: 'Under the floodlights. Plays like a clear day.',
       accel: 1, speed: 1, ballDrag: 0, ballBounce: 1 },
   };
 
@@ -175,7 +188,7 @@
   return {
     FIELD, PLAYER_RADIUS, BALL_RADIUS, TEAMS, POSITIONS, TEAM_SIZE,
     TICK_RATE, SNAPSHOT_RATE, RULE_SCHEMA, BOOSTS, BOOST_IDS, FORMATION,
-    ARENAS, WEATHER, CHAOS, CHAOS_IDS, EMOTES,
+    ARENAS, VENUES, WEATHER, CHAOS, CHAOS_IDS, EMOTES,
     defaultRules, sanitizeRules, slotId, parseSlot, otherTeam,
   };
 });

@@ -28,10 +28,13 @@ seat a human doesn't take.
   it, `F` or right-click to lob over players. Keepers can claw lobs; a ball
   over the bar hits the frame.
 * **Combo passes**: three completed passes in a row set the next shot on fire.
-* **Location and weather**, picked when you create a game: classic, ice
-  rink, mud bath or pinball (orbiting bumpers), in clear skies, wind
+* **Location and weather**, picked when you create a game: National
+  Stadium, Old Town Ground, Seaside Arena, Alpine Park, Rooftop Cage or
+  Desert Bowl, each with its own stands and mowing pattern, in clear skies, wind
   (shifting gusts), rain (the ball skids on), snow (slower legs, the ball
   holds up) or at night under the floodlights.
+* **Special pitches** (Advanced): ice rink, mud bath or pinball (orbiting
+  bumpers).
 * **Goal replays** show up to 4 s of build-up, then a second's pause before
   the restart (set by "Goal replay + pause" in Advanced).
 * **Chaos events** every ~35 s: tiny goals, golden window (double points),

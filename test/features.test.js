@@ -166,6 +166,8 @@ test('weather: wind is weather now, old "wind" arenas map to it, snow slows play
   const legacy = MCS.sanitizeRules({ arena: 'wind' });
   assert.equal(legacy.arena, 'classic'); assert.equal(legacy.weather, 'wind');
   assert.equal(MCS.sanitizeRules({ weather: 'hail' }).weather, 'clear', 'unknown weather is ignored');
+  assert.equal(MCS.sanitizeRules({ venue: 'seaside' }).venue, 'seaside');
+  assert.equal(MCS.sanitizeRules({ venue: 'moon' }).venue, 'national', 'unknown locations are ignored');
   const m = inPlay({ arena: 'mud', weather: 'wind' });
   for (const p of m.players) { p.x = 50; p.y = 50; }
   m.ball.x = 600; m.ball.y = 350;

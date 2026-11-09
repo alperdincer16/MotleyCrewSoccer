@@ -89,6 +89,7 @@
       this.renderer.setGoalWidth(this.rules.goalWidth);
       this.renderer.setArena(this.rules.arena);
       this.renderer.setWeather(this.rules.weather);
+      this.renderer.setVenue(this.rules.venue);
       this.renderer.rules = this.rules;
       this.renderer.particles = [];
       this.el.chaos.classList.add('hidden'); this.el.wind.classList.add('hidden'); this.el.eventCard.className = 'event-card hidden'; clearTimeout(this.eventTimer);

@@ -45,7 +45,7 @@
         cb.onchange = () => onChange({ [key]: cb.checked });
         row.appendChild(cb);
       } else if (s.kind === 'enum') {
-        const table = key === 'arena' ? MCS.ARENAS : key === 'weather' ? MCS.WEATHER : null;
+        const table = key === 'arena' ? MCS.ARENAS : key === 'weather' ? MCS.WEATHER : key === 'venue' ? MCS.VENUES : null;
         const label = (v) => table && table[v] ? `${table[v].icon} ${table[v].label}` : v;
         if (editable) {
           const sel = el('select');
@@ -99,7 +99,7 @@
       b.setAttribute('aria-pressed', id === current ? 'true' : 'false');
       b.appendChild(el('span', 'ic', o.icon));
       b.appendChild(el('b', null, o.label));
-      b.appendChild(el('small', null, o.desc));
+      b.appendChild(el('small', null, o.short || o.desc));
       b.onclick = () => onPick(id);
       container.appendChild(b);
     }
@@ -120,9 +120,10 @@
     const R = MCS.RULE_SCHEMA;
     const chips = el('div', 'rule-chips');
     const chip = (text, title, cls) => { const c = el('span', 'rchip' + (cls ? ' ' + cls : ''), text); if (title) c.title = title; chips.appendChild(c); };
-    const ar = MCS.ARENAS[rules.arena];
+    const ar = MCS.ARENAS[rules.arena], vn = MCS.VENUES[rules.venue];
     chip(`⏱ ${rules.matchSeconds / 60} min`, 'Match length');
-    if (ar) chip(`${ar.icon} ${ar.label}`, ar.desc);
+    if (vn) chip(`${vn.icon} ${vn.label}`, vn.desc);
+    if (ar && rules.arena !== 'classic') chip(`${ar.icon} ${ar.label}`, ar.desc);
     const wx = MCS.WEATHER[rules.weather];
     if (wx && rules.weather !== 'clear') chip(`${wx.icon} ${wx.label}`, wx.desc);
     if (rules.goalLimit) chip(`First to ${rules.goalLimit}`, 'Goal limit');
@@ -220,8 +221,8 @@
       this.renderCreateSides();
       const update = (patch) => { this.createRules = MCS.sanitizeRules(patch, this.createRules); rerender(); };
       const rerender = () => {
-        renderRulesEditor($('createRules'), this.createRules, true, update, 'match', ['arena', 'weather']);
-        renderChoices($('createLocation'), MCS.ARENAS, this.createRules.arena, (v) => update({ arena: v }));
+        renderRulesEditor($('createRules'), this.createRules, true, update, 'match', ['venue', 'weather']);
+        renderChoices($('createLocation'), MCS.VENUES, this.createRules.venue, (v) => update({ venue: v }));
         renderChoices($('createWeather'), MCS.WEATHER, this.createRules.weather, (v) => update({ weather: v }));
         renderRulesEditor($('createBoostRules'), this.createRules, true, update, 'boosts');
         renderRulesEditor($('createRulesAdv'), this.createRules, true, update, 'advanced');
@@ -278,7 +279,6 @@
         title.appendChild(el('span', 'name', (g.locked ? '🔒 ' : '') + g.name));
         const badges = el('span', 'badges');
         if (g.mode === 'tournament') badges.appendChild(el('span', 'badge tour', `🏆 ${g.round || 'Tournament'}`));
-        if (g.arena && g.arena !== 'classic' && MCS.ARENAS[g.arena]) badges.appendChild(el('span', 'badge', `${MCS.ARENAS[g.arena].icon} ${MCS.ARENAS[g.arena].label}`));
         const badge = el('span', 'badge ' + (g.status === 'playing' ? 'live' : g.status === 'ended' ? 'ended' : 'open'));
         badge.textContent = g.status === 'playing' ? 'Live' : g.status === 'ended' ? 'Full time' : 'Waiting';
         badges.appendChild(badge);
@@ -381,7 +381,7 @@
       renderBoostToggles($('roomBoosts'), room.rules, canEdit, send);
       $('boostHint').textContent = boostSummary(room.rules);
       const advChanged = Object.entries(MCS.RULE_SCHEMA).filter(([k, sc]) => sc.group === 'advanced' && room.rules[k] !== sc.def).length;
-      $('roomRulesAdv').closest('details').querySelector('summary .muted').textContent = advChanged ? `${advChanged} changed` : 'physics, timings, mercy rule';
+      $('roomRulesAdv').closest('details').querySelector('summary .muted').textContent = advChanged ? `${advChanged} changed` : 'special pitches, physics, timings';
     }
 
     /** Mode switch and the knockout bracket. */

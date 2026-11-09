@@ -19,6 +19,21 @@
   const FX = { speed: 1, rocket: 2, frozen: 4, shrink: 8, magnet: 16, shield: 32, slide: 64, sticky: 128, armed: 256, stun: 512, stumble: 1024 };
   const BF = { giant: 1, thunder: 2, fire: 4, laser: 8 };
   const ARMED_COLORS = { banana: '#ffe066', thunder: '#fff176', laser: '#4cc9f0' };
+  // Locations (T-46): stands, hoardings, wall and the mowing pattern on grass.
+  const VENUE_LOOK = {
+    national: { tiers: ['#1a1f26', '#20262e', '#242b34'], board: '#0f1318', boardA: '#1f2a36', boardB: '#2a1f36', ink: '#d7dde6', wall: '#3a4654',
+      grass: ['#2f8f46', '#2a8340'], mow: 'stripes', texts: ['MOTLEY CREW SOCCER', 'BOOSTS ON', 'GOLDEN GOAL'] },
+    oldtown:  { tiers: ['#3a1d18', '#4a241d', '#552a21'], board: '#2b1712', boardA: '#efe6cf', boardB: '#d9cdb0', ink: '#5a2a1f', wall: '#7a4330',
+      grass: ['#2c7a3c', '#27703a'], mow: 'narrow', texts: ['OLD TOWN FC · EST. 1911', 'PIES & BOVRIL', 'MIND THE TERRACE'] },
+    seaside:  { tiers: ['#cfe0e4', '#b7d4da', '#9fc6ce'], board: '#0a3d47', boardA: '#11707f', boardB: '#0e5f6c', ink: '#f2fbfc', wall: '#e2cc97',
+      grass: ['#3aa357', '#349650'], mow: 'diagonal', texts: ['SEASIDE ARENA', 'SURF & TURF', 'ICE CREAM ON THE PIER'] },
+    alpine:   { tiers: ['#4a3220', '#5a3d27', '#6b4a2f'], board: '#18241b', boardA: '#2b3f2f', boardB: '#34503a', ink: '#f1f5ee', wall: '#6d7a6f',
+      grass: ['#2f9a4c', '#288843'], mow: 'checker', texts: ['ALPINE PARK', 'HOT CHOCOLATE', 'GONDOLA TO THE GROUND'] },
+    rooftop:  { tiers: ['#2a2d33', '#33373e', '#3c4048'], board: '#08080b', boardA: '#2a0d33', boardB: '#0d2a33', ink: '#ff5ad1', ink2: '#4cf0ff', wall: '#8a929c', fence: true,
+      grass: ['#2c8a52', '#267d4a'], mow: 'stripes', texts: ['ROOFTOP CAGE', 'NO BALLS OVER THE EDGE', 'LEVEL 42'] },
+    desert:   { tiers: ['#a8743f', '#b8834b', '#c69356'], board: '#4a2f16', boardA: '#7a4e24', boardB: '#6a431f', ink: '#ffe9c2', wall: '#c9a46b',
+      grass: ['#4a9a3e', '#438c38'], mow: 'rings', texts: ['DESERT BOWL', 'STAY HYDRATED', 'OASIS SPRINGS'] },
+  };
   // Pitch palettes per arena: two stripe colours, line colour, vignette strength.
   const SURFACES = {
     classic: { a: '#2f8f46', b: '#2a8340', line: 'rgba(255,255,255,.85)', vig: 0.25 },
@@ -47,6 +62,7 @@
       this.teamColors = { red: COLORS.red, blue: COLORS.blue };
       this.arena = 'classic';
       this.weather = 'clear';
+      this.venue = 'national';
       this.drops = [];           // rain streaks or snowflakes in canvas pixels (T-45)
       this.nightLayer = null;    // cached floodlight overlay
       this.rules = null;
@@ -60,6 +76,7 @@
     }
 
     setArena(a) { if (a !== this.arena) { this.arena = a || 'classic'; this.pitchCache = null; } }
+    setVenue(v) { v = VENUE_LOOK[v] ? v : 'national'; if (v !== this.venue) { this.venue = v; this.pitchCache = null; } }
     setWeather(w) { w = w || 'clear'; if (w !== this.weather) { this.weather = w; this.pitchCache = null; this.drops = []; this.nightLayer = null; } }
     setWind(x, y) { this.wind.x = x; this.wind.y = y; }
     callout(id, text, color) { this.callouts.set(id, { text, color, t: 1.6 }); }
@@ -149,6 +166,23 @@
       this.updateWeather(dt);
     }
 
+    /** Mowing pattern in the second grass colour (fillStyle already set). */
+    mowPattern(ctx, mow, base) {
+      if (mow === 'narrow') { const n = 24; for (let i = 0; i < n; i += 2) ctx.fillRect(i * W / n, 0, W / n, H); }
+      else if (mow === 'checker') { const nx = 12, ny = 8; for (let i = 0; i < nx; i++) for (let j = 0; j < ny; j++) if ((i + j) % 2) ctx.fillRect(i * W / nx, j * H / ny, W / nx, H / ny); }
+      else if (mow === 'diagonal') {
+        ctx.save(); ctx.translate(W / 2, H / 2); ctx.rotate(-Math.PI / 4);
+        const d = Math.hypot(W, H), w = 70; for (let x = -d / 2; x < d / 2; x += w * 2) ctx.fillRect(x, -d / 2, w, d);
+        ctx.restore();
+      } else if (mow === 'rings') {
+        const max = Math.hypot(W, H) / 2, w = 55, b = ctx.fillStyle;
+        for (let k = Math.ceil(max / w); k > 0; k--) {
+          ctx.beginPath(); ctx.arc(W / 2, H / 2, k * w, 0, Math.PI * 2);
+          ctx.fillStyle = k % 2 ? b : base; ctx.fill();
+        }
+      } else { const n = 12; for (let i = 0; i < n; i += 2) ctx.fillRect(i * W / n, 0, W / n, H); }
+    }
+
     // ---- Weather (T-45) -----------------------------------------------------
     updateWeather(dt) {
       const cw = this.canvas.width, ch = this.canvas.height, d = this.drops;
@@ -227,11 +261,12 @@
       ctx.fillStyle = '#0b0e12'; ctx.fillRect(0, 0, c.width, c.height);
 
       ctx.save(); ctx.translate(M, M);
-      // Stands: concrete terraces behind the hoardings, stepped rows.
-      ctx.fillStyle = '#1a1f26'; ctx.fillRect(-M, -M, W + 2 * M, H + 2 * M);
+      // Stands: terraces behind the hoardings, stepped rows, coloured by location.
+      const look = VENUE_LOOK[this.venue] || VENUE_LOOK.national;
+      ctx.fillStyle = look.tiers[0]; ctx.fillRect(-M, -M, W + 2 * M, H + 2 * M);
       for (let r = 0; r < 3; r++) {
         const inset = 30 + r * 23;
-        ctx.fillStyle = r % 2 ? '#20262e' : '#242b34';
+        ctx.fillStyle = r % 2 ? look.tiers[1] : look.tiers[2];
         ctx.fillRect(-inset - 23, -inset - 23, W + 2 * (inset + 23), 23);
         ctx.fillRect(-inset - 23, H + inset, W + 2 * (inset + 23), 23);
         ctx.fillRect(-inset - 23, -inset, 23, H + 2 * inset);
@@ -241,17 +276,19 @@
       const boardY = [-28, H + 14];
       ctx.font = 'bold 10px system-ui, sans-serif'; ctx.textBaseline = 'middle';
       for (const by of boardY) {
-        ctx.fillStyle = '#0f1318'; ctx.fillRect(-28, by, W + 56, 14);
-        const texts = ['MOTLEY CREW SOCCER', this.teamNames.red, 'BOOSTS ON', this.teamNames.blue, '4 v 4', 'GOLDEN GOAL'];
+        ctx.fillStyle = look.board; ctx.fillRect(-28, by, W + 56, 14);
+        const texts = [look.texts[0], this.teamNames.red, look.texts[1], this.teamNames.blue, '4 v 4', look.texts[2]];
         for (let i = 0; i < 6; i++) {
           const x0 = -28 + i * (W + 56) / 6;
-          ctx.fillStyle = i % 2 ? '#1f2a36' : '#2a1f36'; ctx.fillRect(x0 + 2, by + 1, (W + 56) / 6 - 4, 12);
-          ctx.fillStyle = i === 1 ? this.teamColors.red : i === 3 ? this.teamColors.blue : '#d7dde6';
+          ctx.fillStyle = i % 2 ? look.boardA : look.boardB; ctx.fillRect(x0 + 2, by + 1, (W + 56) / 6 - 4, 12);
+          if (look.fence) { ctx.shadowColor = i % 2 ? look.ink2 : look.ink; ctx.shadowBlur = 8; }
+          ctx.fillStyle = i === 1 ? this.teamColors.red : i === 3 ? this.teamColors.blue : (look.ink2 && i % 2 ? look.ink2 : look.ink);
           ctx.textAlign = 'center'; ctx.fillText(texts[i], x0 + (W + 56) / 12, by + 7);
+          ctx.shadowBlur = 0;
         }
       }
       for (const bx of [-28, W + 14]) {
-        ctx.fillStyle = '#0f1318'; ctx.fillRect(bx, -14, 14, H + 28);
+        ctx.fillStyle = look.board; ctx.fillRect(bx, -14, 14, H + 28);
         ctx.save(); ctx.translate(bx + 7, H / 2); ctx.rotate(bx < 0 ? -Math.PI / 2 : Math.PI / 2);
         ctx.fillStyle = bx < 0 ? this.teamColors.red : this.teamColors.blue; ctx.textAlign = 'center';
         ctx.fillText((bx < 0 ? this.teamNames.red : this.teamNames.blue) + ' END', 0, 0);
@@ -260,14 +297,21 @@
       // Arena walls (rounded rect) with goal pockets cut out
       const arena = new Path2D();
       arena.roundRect(-8, -8, W + 16, H + 16, cr + 8);
-      ctx.fillStyle = COLORS.wallEdge; ctx.fill(arena);
+      ctx.fillStyle = look.wall; ctx.fill(arena);
+      if (look.fence) {
+        // Rooftop: a chain-link fence just outside the wall.
+        ctx.save(); ctx.strokeStyle = 'rgba(200,210,220,.35)'; ctx.lineWidth = 1;
+        const fence = new Path2D(); fence.roundRect(-20, -20, W + 40, H + 40, cr + 20);
+        ctx.setLineDash([3, 4]); ctx.lineWidth = 6; ctx.stroke(fence); ctx.setLineDash([]); ctx.restore();
+      }
       const inner = new Path2D(); inner.roundRect(0, 0, W, H, cr);
       // Grass
       ctx.save(); ctx.clip(inner);
-      const surf = SURFACES[this.arena] || SURFACES.classic;
+      const grassy = this.arena === 'classic' || !SURFACES[this.arena];
+      const surf = grassy ? Object.assign({}, SURFACES.classic, { a: look.grass[0], b: look.grass[1] }) : SURFACES[this.arena];
       ctx.fillStyle = surf.a; ctx.fillRect(0, 0, W, H);
       ctx.fillStyle = surf.b;
-      const stripes = 12; for (let i = 0; i < stripes; i += 2) ctx.fillRect(i * W / stripes, 0, W / stripes, H);
+      this.mowPattern(ctx, grassy ? look.mow : 'stripes', surf.a);
       if (this.arena === 'ice') {
         // skate scratches
         ctx.strokeStyle = 'rgba(255,255,255,.55)'; ctx.lineWidth = 1;
