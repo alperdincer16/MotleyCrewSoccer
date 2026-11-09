@@ -76,7 +76,7 @@
     }
 
     setArena(a) { if (a !== this.arena) { this.arena = a || 'classic'; this.pitchCache = null; } }
-    setVenue(v) { v = VENUE_LOOK[v] ? v : 'national'; if (v !== this.venue) { this.venue = v; this.pitchCache = null; } }
+    setVenue(v) { v = VENUE_LOOK[v] ? v : 'national'; if (this.crowd) this.crowd.setVenue(v); if (v !== this.venue) { this.venue = v; this.pitchCache = null; } }
     setWeather(w) { w = w || 'clear'; if (w !== this.weather) { this.weather = w; this.pitchCache = null; this.drops = []; this.nightLayer = null; } }
     setWind(x, y) { this.wind.x = x; this.wind.y = y; }
     callout(id, text, color) { this.callouts.set(id, { text, color, t: 1.6 }); }
@@ -122,7 +122,7 @@
     setTeams(kits, colors, names) {
       this.kits = kits; this.teamColors = colors; this.pitchCache = null;
       if (names) this.teamNames = names;
-      if (this.crowd) this.crowd.setColors(colors);
+      if (this.crowd) this.crowd.setColors(colors, kits, this.teamNames);
     }
 
     // ---- Particles ---------------------------------------------------------
