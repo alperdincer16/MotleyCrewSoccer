@@ -33,10 +33,11 @@
   // ---- Rule schema ----------------------------------------------------------
   // Every rule has: label, kind ('number' | 'bool' | 'enum'), default, and for
   // numbers min/max/step. The server validates incoming rule changes against
-  // this. `group` only decides where the editor shows it: 'match' (Rules),
+  // this. `scale` (optional) is the display unit the editor divides by, so
+  // match length is edited in minutes but stored in seconds. `group` only decides where the editor shows it: 'match' (Rules),
   // 'boosts' (Boosts) or 'advanced' (Advanced, collapsed by default).
   const RULE_SCHEMA = {
-    matchSeconds:    { label: 'Match length (s)',        kind: 'number', def: 180,   min: 60,  max: 600, step: 30, group: 'match' },
+    matchSeconds:    { label: 'Match length (min)',      kind: 'number', def: 180,   min: 60,  max: 600, step: 30, group: 'match', scale: 60 },
     goalLimit:       { label: 'Goal limit (0 = off)',    kind: 'number', def: 0,     min: 0,   max: 15,  step: 1, group: 'match' },
     suddenDeath:     { label: 'Sudden death if tied',    kind: 'bool',   def: true, group: 'match' },
     mercyLead:       { label: 'Mercy rule lead (0 = off)',kind: 'number', def: 0,    min: 0,   max: 10,  step: 1, group: 'advanced' },

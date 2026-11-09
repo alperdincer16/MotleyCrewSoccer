@@ -53,11 +53,13 @@
         } else row.appendChild(el('span', 'val', label(rules[key])));
         if (key === 'arena' && MCS.ARENAS[rules[key]]) row.title = MCS.ARENAS[rules[key]].desc;
       } else if (editable) {
-        const inp = el('input'); inp.type = 'number'; inp.min = s.min; inp.max = s.max; inp.step = s.step; inp.value = rules[key];
-        inp.onchange = () => onChange({ [key]: Number(inp.value) });
+        // `scale` shows a rule in a friendlier unit (match length: minutes) while it is stored as-is (seconds).
+        const k = s.scale || 1;
+        const inp = el('input'); inp.type = 'number'; inp.min = s.min / k; inp.max = s.max / k; inp.step = s.step / k; inp.value = rules[key] / k;
+        inp.onchange = () => onChange({ [key]: Number(inp.value) * k });
         row.appendChild(inp);
       } else {
-        row.appendChild(el('span', 'val', String(rules[key])));
+        row.appendChild(el('span', 'val', String(rules[key] / (s.scale || 1))));
       }
       container.appendChild(row);
     }
@@ -102,7 +104,7 @@
     const chips = el('div', 'rule-chips');
     const chip = (text, title, cls) => { const c = el('span', 'rchip' + (cls ? ' ' + cls : ''), text); if (title) c.title = title; chips.appendChild(c); };
     const ar = MCS.ARENAS[rules.arena];
-    chip(`⏱ ${rules.matchSeconds % 60 ? rules.matchSeconds + 's' : rules.matchSeconds / 60 + ' min'}`, 'Match length');
+    chip(`⏱ ${rules.matchSeconds / 60} min`, 'Match length');
     if (ar) chip(`${ar.icon} ${ar.label}`, ar.desc);
     if (rules.goalLimit) chip(`First to ${rules.goalLimit}`, 'Goal limit');
     if (rules.suddenDeath) chip('Sudden death', 'Next goal wins if tied at full time');
@@ -110,7 +112,7 @@
     if (!rules.specials) chip('No signature moves', null, 'off');
     if (!rules.dashEnabled) chip('No sprint / tackle', null, 'off');
     const adv = Object.keys(R).filter(k => R[k].group === 'advanced' && rules[k] !== R[k].def);
-    if (adv.length) chip(`⚙ ${adv.length} custom`, adv.map(k => `${R[k].label}: ${rules[k]}`).join('\n'), 'custom');
+    if (adv.length) chip(`⚙ ${adv.length} custom`, adv.map(k => `${R[k].label}: ${rules[k] / (R[k].scale || 1)}`).join('\n'), 'custom');
     card.appendChild(chips);
 
     const pool = el('div', 'boost-pool');
@@ -265,7 +267,6 @@
         const meta = el('div', 'meta');
         meta.appendChild(el('span', null, `Host ${g.hostName}`));
         meta.appendChild(el('span', null, `${g.humans} human${g.humans === 1 ? '' : 's'} · ${g.slotsTaken}/${g.slotsTotal} slots`));
-        meta.appendChild(el('span', null, `${Math.round(g.matchSeconds / 60)} min`));
         if (g.status === 'playing' && g.score) meta.appendChild(el('span', null, `Score ${g.score.red}–${g.score.blue} · ${Math.floor(g.timeLeft / 60)}:${String(g.timeLeft % 60).padStart(2, '0')} left`));
         card.appendChild(meta);
         renderGameRules(card, g.rules, this.openGameRules, g.id);
