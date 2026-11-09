@@ -66,7 +66,7 @@ same network / a deployed host) to play online. Only one dependency (`ws`).
 |--------|------|
 | Move | `W A S D` or arrow keys (touch: left joystick) |
 | Kick | `Space` / `X` or mouse click, aim with the mouse |
-| Dash | `Shift` / `C` |
+| Sprint / tackle | `C` (or `Shift`) |
 | Charged shot | hold kick, release on contact |
 | Curve | sweep the mouse sideways as you kick, or run across the ball |
 | Lob | `F` or right mouse button (touch: LOB) |

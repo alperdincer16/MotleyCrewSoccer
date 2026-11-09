@@ -75,6 +75,7 @@
         skill: document.getElementById('skillMeter'), skillName: document.getElementById('skillName'), skillFill: document.getElementById('skillFill'),
         comboRed: document.getElementById('comboRed'), comboBlue: document.getElementById('comboBlue'),
         chaos: document.getElementById('chaosChip'), wind: document.getElementById('windChip'),
+        eventCard: document.getElementById('eventCard'),
       };
       this.bannerTimer = null;
       this._lastClockSecond = -1;
@@ -89,7 +90,7 @@
       this.renderer.setArena(this.rules.arena);
       this.renderer.rules = this.rules;
       this.renderer.particles = [];
-      this.el.chaos.classList.add('hidden'); this.el.wind.classList.add('hidden');
+      this.el.chaos.classList.add('hidden'); this.el.wind.classList.add('hidden'); this.el.eventCard.className = 'event-card hidden'; clearTimeout(this.eventTimer);
       this.snaps = []; this.inputHistory = []; this.replay = null; this.lastPred = null; this.clock.offset = null;
       if (this.highlights) this.highlights.reset();
       this.predErr = { x: 0, y: 0 };
@@ -371,7 +372,7 @@
             break;
           case 'chaos': {
             const c = MCS.CHAOS[e.kind];
-            this.showBanner(`${c.icon} ${c.label.toUpperCase()}`, c.desc, 'gold', 2200);
+            this.showEvent(c.icon, c.label, c.desc, 'chaos', 2600);
             this.audio.chaos();
             if (R.crowd) R.crowd.pulse(null, 0.45);
             break;
@@ -395,7 +396,8 @@
             R.burst(e.x, e.y, { n: 24, color: b.color, speed: 220, life: 0.7 });
             this.audio.pickup(); if (e.boost === 'freeze') this.audio.freeze();
             if (R.crowd) R.crowd.pulse(e.team, 0.25);
-            this.toast(`${b.icon} ${this.playerName(e.slot)} got ${b.label}`, e.team);
+            if (e.slot === this.mySlot) this.showEvent(b.icon, b.label, b.desc, 'boost', 2200, b.color);
+            else this.toast(`${b.icon} ${this.playerName(e.slot)} got ${b.label}`, e.team);
             break;
           }
           case 'goal': {
@@ -492,6 +494,28 @@
       if (ms) this.bannerTimer = setTimeout(() => this.hideBanner(), ms);
     }
     hideBanner() { this.el.banner.classList.add('hidden'); }
+    /**
+     * Compact announcement card under the scoreboard for chaos events and your
+     * own boost pickups: icon, title, one line of detail and a draining timer
+     * bar. Replaces the full-width banner these used to take. (T-44, Sam Okafor)
+     */
+    showEvent(icon, title, sub, kind, ms, color) {
+      const c = this.el.eventCard;
+      c.className = 'event-card ' + (kind || '');
+      c.style.setProperty('--event-color', color || '');
+      c.style.setProperty('--event-ms', ms + 'ms');
+      c.innerHTML = '';
+      const ic = document.createElement('span'); ic.className = 'ev-icon'; ic.textContent = icon;
+      const tx = document.createElement('span'); tx.className = 'ev-text';
+      const t = document.createElement('b'); t.textContent = title; tx.appendChild(t);
+      if (sub) { const s = document.createElement('small'); s.textContent = sub; tx.appendChild(s); }
+      const bar = document.createElement('span'); bar.className = 'ev-timer';
+      c.append(ic, tx, bar);
+      void c.offsetWidth; // restart the entry animation when cards arrive back to back
+      c.classList.add('show');
+      clearTimeout(this.eventTimer);
+      this.eventTimer = setTimeout(() => { c.classList.remove('show'); c.classList.add('leaving'); this.eventTimer = setTimeout(() => c.classList.add('hidden'), 260); }, ms);
+    }
     toast(text, team) {
       const t = document.createElement('div'); t.className = 'toast'; t.textContent = text;
       if (team) t.style.borderColor = team === 'red' ? 'var(--teamRed)' : 'var(--teamBlue)';
@@ -669,7 +693,7 @@
         left: !!(k.KeyA || k.ArrowLeft) || this.touch.dx < -0.3,
         right: !!(k.KeyD || k.ArrowRight) || this.touch.dx > 0.3,
         kick: !!(k.Space || k.KeyX) || this.mouse.down || this.touch.kick || this.latch.kick,
-        dash: !!(k.ShiftLeft || k.ShiftRight || k.KeyC) || this.touch.dash,
+        dash: !!(k.KeyC || k.ShiftLeft || k.ShiftRight) || this.touch.dash,   // C is the sprint / tackle key; Shift still works
         lob: !!k.KeyF || this.mouse.right || this.touch.lob || this.latch.lob,
         skill: !!(k.KeyE || k.KeyQ) || this.touch.skill || this.latch.skill,
         aimX: this.mouse.x, aimY: this.mouse.y,

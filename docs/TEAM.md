@@ -61,6 +61,7 @@ recorded here, in the header comment of each source file, and in the
 | T-41 | Possession: body bumps can't knock the ball off a dribbler (only a tackle can), 0.7 s protection after winning it, no instant re-steal, stickier dribbling, keepers can't bundle a goal-line ball into their own net | Diego Ferreira | Done |
 | T-42 | Tests for T-40 and T-41; bot-match chaos metrics | Rosa Vidal | Done |
 | T-43 | Tackles: bots commit sooner and go straight in at the ball; tackle animation (lunge with motion smear, dust, impact ring, TACKLE! callout, victim stumble with stars); tackled player can't kick for 0.35 s | Mei Lin (bots) / Tomasz Nowak (animation) | Done |
+| T-44 | Compact animated event card for chaos events and your own boost pickups (replaces the full-screen banner); smaller goal banners; rules split into Rules / Boosts / Advanced in the create dialog and pre-match room; compact boost toggles; lobby cards show each game's rules and boost pool; C is the sprint/tackle key | Sam Okafor (UI) / Priya Natarajan (lobby rules in the summary) | Done |
 
 ## Working agreements
 

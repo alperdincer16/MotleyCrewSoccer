@@ -187,6 +187,7 @@ class Room {
     if (this.status === 'playing') return this.error(client, 'in_progress', 'Rules lock while a match is running');
     this.rules = MCS.sanitizeRules(rules, this.rules);
     this.broadcastRoom();
+    this.lobby.broadcastLobby();   // lobby cards show the rules (T-44)
   }
 
   setTeam(client, side, nation) {
@@ -369,6 +370,7 @@ class Room {
       slotsTotal: MCS.TEAMS.length * MCS.TEAM_SIZE,
       matchSeconds: this.rules.matchSeconds, createdAt: this.createdAt, sides: this.sides,
       mode: this.mode, round: this.tournament ? this.tournament.roundName() : null, arena: this.rules.arena,
+      rules: Object.assign({}, this.rules),
       score: this.match ? this.match.score : null,
       timeLeft: this.match ? Math.round(this.match.time) : null,
     };

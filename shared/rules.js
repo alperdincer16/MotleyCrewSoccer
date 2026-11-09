@@ -31,28 +31,30 @@
   const SNAPSHOT_RATE = 30;  // network broadcast Hz
 
   // ---- Rule schema ----------------------------------------------------------
-  // Every rule has: label, kind ('number' | 'bool'), default, and for numbers
-  // min/max/step. The server validates incoming rule changes against this.
+  // Every rule has: label, kind ('number' | 'bool' | 'enum'), default, and for
+  // numbers min/max/step. The server validates incoming rule changes against
+  // this. `group` only decides where the editor shows it: 'match' (Rules),
+  // 'boosts' (Boosts) or 'advanced' (Advanced, collapsed by default).
   const RULE_SCHEMA = {
-    matchSeconds:    { label: 'Match length (s)',        kind: 'number', def: 180,   min: 60,  max: 600, step: 30 },
-    goalLimit:       { label: 'Goal limit (0 = off)',    kind: 'number', def: 0,     min: 0,   max: 15,  step: 1 },
-    suddenDeath:     { label: 'Sudden death if tied',    kind: 'bool',   def: true },
-    mercyLead:       { label: 'Mercy rule lead (0 = off)',kind: 'number', def: 0,    min: 0,   max: 10,  step: 1 },
-    goalWidth:       { label: 'Goal width',              kind: 'number', def: 180,   min: 120, max: 320, step: 20 },
-    playerSpeed:     { label: 'Player speed ×',          kind: 'number', def: 1.0,   min: 0.6, max: 1.6, step: 0.1 },
-    kickPower:       { label: 'Kick power ×',            kind: 'number', def: 1.0,   min: 0.5, max: 2.0, step: 0.1 },
-    ballBounce:      { label: 'Ball bounciness',         kind: 'number', def: 0.85,  min: 0.3, max: 1.1, step: 0.05 },
-    ballDrag:        { label: 'Ball drag (1 = none)',    kind: 'number', def: 0.992, min: 0.95, max: 1.0, step: 0.002 },
-    dashEnabled:     { label: 'Dash ability',            kind: 'bool',   def: true },
-    boostsEnabled:   { label: 'Boost pickups',           kind: 'bool',   def: true },
-    pickupInterval:  { label: 'Pickup spawn every (s)',  kind: 'number', def: 8,     min: 3,   max: 30,  step: 1 },
-    maxPickups:      { label: 'Max pickups on pitch',    kind: 'number', def: 2,     min: 1,   max: 5,   step: 1 },
-    kickoffPause:    { label: 'Pause after goal (s)',    kind: 'number', def: 2.5,   min: 0.5, max: 5,   step: 0.5 },
-    botSkill:        { label: 'Bot skill ×',             kind: 'number', def: 1.0,   min: 0.5, max: 1.5, step: 0.1 },
-    arena:           { label: 'Arena',                   kind: 'enum',   def: 'classic', options: ['classic', 'ice', 'mud', 'wind', 'bumpers'] },
-    specials:        { label: 'Signature moves',         kind: 'bool',   def: true },
-    chaosEvents:     { label: 'Chaos events',            kind: 'bool',   def: true },
-    chaosEvery:      { label: 'Chaos event every (s)',   kind: 'number', def: 35,    min: 15,  max: 120, step: 5 },
+    matchSeconds:    { label: 'Match length (s)',        kind: 'number', def: 180,   min: 60,  max: 600, step: 30, group: 'match' },
+    goalLimit:       { label: 'Goal limit (0 = off)',    kind: 'number', def: 0,     min: 0,   max: 15,  step: 1, group: 'match' },
+    suddenDeath:     { label: 'Sudden death if tied',    kind: 'bool',   def: true, group: 'match' },
+    mercyLead:       { label: 'Mercy rule lead (0 = off)',kind: 'number', def: 0,    min: 0,   max: 10,  step: 1, group: 'advanced' },
+    goalWidth:       { label: 'Goal width',              kind: 'number', def: 180,   min: 120, max: 320, step: 20, group: 'advanced' },
+    playerSpeed:     { label: 'Player speed ×',          kind: 'number', def: 1.0,   min: 0.6, max: 1.6, step: 0.1, group: 'advanced' },
+    kickPower:       { label: 'Kick power ×',            kind: 'number', def: 1.0,   min: 0.5, max: 2.0, step: 0.1, group: 'advanced' },
+    ballBounce:      { label: 'Ball bounciness',         kind: 'number', def: 0.85,  min: 0.3, max: 1.1, step: 0.05, group: 'advanced' },
+    ballDrag:        { label: 'Ball drag (1 = none)',    kind: 'number', def: 0.992, min: 0.95, max: 1.0, step: 0.002, group: 'advanced' },
+    dashEnabled:     { label: 'Sprint & tackle (C)',     kind: 'bool',   def: true, group: 'match' },
+    boostsEnabled:   { label: 'Boost pickups',           kind: 'bool',   def: true, group: 'boosts' },
+    pickupInterval:  { label: 'Pickup spawn every (s)',  kind: 'number', def: 8,     min: 3,   max: 30,  step: 1, group: 'boosts' },
+    maxPickups:      { label: 'Max pickups on pitch',    kind: 'number', def: 2,     min: 1,   max: 5,   step: 1, group: 'boosts' },
+    kickoffPause:    { label: 'Pause after goal (s)',    kind: 'number', def: 2.5,   min: 0.5, max: 5,   step: 0.5, group: 'advanced' },
+    botSkill:        { label: 'Bot skill ×',             kind: 'number', def: 1.0,   min: 0.5, max: 1.5, step: 0.1, group: 'match' },
+    arena:           { label: 'Arena',                   kind: 'enum',   def: 'classic', options: ['classic', 'ice', 'mud', 'wind', 'bumpers'], group: 'match' },
+    specials:        { label: 'Signature moves',         kind: 'bool',   def: true, group: 'match' },
+    chaosEvents:     { label: 'Chaos events',            kind: 'bool',   def: true, group: 'match' },
+    chaosEvery:      { label: 'Chaos event every (s)',   kind: 'number', def: 35,    min: 15,  max: 120, step: 5, group: 'advanced' },
   };
 
   // ---- Arenas ---------------------------------------------------------------

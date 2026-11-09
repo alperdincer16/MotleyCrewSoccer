@@ -33,10 +33,11 @@
    * Render a rules editor into `container`.
    * onChange(partialRules) is called with the changed key when editable.
    */
-  function renderRulesEditor(container, rules, editable, onChange) {
+  function renderRulesEditor(container, rules, editable, onChange, group) {
     container.innerHTML = '';
     for (const [key, s] of Object.entries(MCS.RULE_SCHEMA)) {
-      const row = el('div', 'rule');
+      if (group && (s.group || 'match') !== group) continue;
+      const row = el('div', 'rule' + (rules[key] !== s.def ? ' changed' : ''));
       row.appendChild(el('span', null, s.label));
       if (s.kind === 'bool') {
         const cb = el('input'); cb.type = 'checkbox'; cb.checked = !!rules[key]; cb.disabled = !editable;
@@ -65,9 +66,11 @@
   function renderBoostToggles(container, rules, editable, onChange) {
     container.innerHTML = '';
     const enabled = new Set(rules.enabledBoosts || []);
+    container.classList.toggle('pool-off', !rules.boostsEnabled);
     for (const [id, b] of Object.entries(MCS.BOOSTS)) {
-      const lab = el('label', 'boost' + (enabled.has(id) ? '' : ' off'));
-      lab.style.borderColor = enabled.has(id) ? b.color : '';
+      const lab = el('label', 'boost' + (enabled.has(id) ? ' on' : ' off'));
+      lab.style.setProperty('--boost-color', b.color);
+      lab.title = `${b.label}: ${b.desc}` + (editable ? ` (click to turn ${enabled.has(id) ? 'off' : 'on'})` : '');
       const cb = el('input'); cb.type = 'checkbox'; cb.checked = enabled.has(id); cb.disabled = !editable;
       cb.onchange = () => {
         const next = new Set(enabled); if (cb.checked) next.add(id); else next.delete(id);
@@ -75,11 +78,63 @@
       };
       lab.appendChild(cb);
       lab.appendChild(el('span', 'ic', b.icon));
-      const txt = el('span'); txt.appendChild(document.createTextNode(b.label)); txt.appendChild(el('small', null, b.desc));
+      const txt = el('span', 'txt'); txt.appendChild(el('b', null, b.label)); txt.appendChild(el('small', null, b.desc));
       lab.appendChild(txt);
+      lab.appendChild(el('span', 'state', enabled.has(id) ? 'On' : 'Off'));
       if (!editable) lab.style.cursor = 'default';
       container.appendChild(lab);
     }
+  }
+
+  /** "5 of 7 on", or "Off" when pickups are disabled. */
+  function boostSummary(rules) {
+    if (!rules.boostsEnabled) return 'Pickups off';
+    return `${(rules.enabledBoosts || []).length} of ${Object.keys(MCS.BOOSTS).length} on`;
+  }
+
+  /**
+   * Lobby game card: headline rule chips, the boost pool as icons, and a
+   * fold-out with every rule grouped as Rules / Boosts / Advanced. (T-44)
+   */
+  function renderGameRules(card, rules, openSet, id) {
+    if (!rules) return;
+    const R = MCS.RULE_SCHEMA;
+    const chips = el('div', 'rule-chips');
+    const chip = (text, title, cls) => { const c = el('span', 'rchip' + (cls ? ' ' + cls : ''), text); if (title) c.title = title; chips.appendChild(c); };
+    const ar = MCS.ARENAS[rules.arena];
+    chip(`⏱ ${rules.matchSeconds % 60 ? rules.matchSeconds + 's' : rules.matchSeconds / 60 + ' min'}`, 'Match length');
+    if (ar) chip(`${ar.icon} ${ar.label}`, ar.desc);
+    if (rules.goalLimit) chip(`First to ${rules.goalLimit}`, 'Goal limit');
+    if (rules.suddenDeath) chip('Sudden death', 'Next goal wins if tied at full time');
+    if (rules.chaosEvents) chip('🎲 Chaos', `A chaos event every ${rules.chaosEvery}s`);
+    if (!rules.specials) chip('No signature moves', null, 'off');
+    if (!rules.dashEnabled) chip('No sprint / tackle', null, 'off');
+    const adv = Object.keys(R).filter(k => R[k].group === 'advanced' && rules[k] !== R[k].def);
+    if (adv.length) chip(`⚙ ${adv.length} custom`, adv.map(k => `${R[k].label}: ${rules[k]}`).join('\n'), 'custom');
+    card.appendChild(chips);
+
+    const pool = el('div', 'boost-pool');
+    if (!rules.boostsEnabled) pool.appendChild(el('span', 'muted', 'Boost pickups off'));
+    else {
+      const on = new Set(rules.enabledBoosts || []);
+      for (const [id, b] of Object.entries(MCS.BOOSTS)) {
+        const i = el('span', 'bp' + (on.has(id) ? '' : ' off'), b.icon);
+        i.title = `${b.label}: ${b.desc}${on.has(id) ? '' : ' (off)'}`;
+        pool.appendChild(i);
+      }
+    }
+    card.appendChild(pool);
+
+    const det = el('details', 'game-rules');
+    det.appendChild(el('summary', null, 'All rules'));
+    // The lobby re-renders on every update, so remember which cards are open.
+    det.open = openSet.has(id);
+    det.ontoggle = () => { if (det.open) openSet.add(id); else openSet.delete(id); };
+    for (const [group, title] of [['match', 'Rules'], ['boosts', 'Boosts'], ['advanced', 'Advanced']]) {
+      det.appendChild(el('h4', null, title));
+      const grid = el('div', 'rules-grid compact'); renderRulesEditor(grid, rules, false, null, group); det.appendChild(grid);
+    }
+    card.appendChild(det);
   }
 
   class UI {
@@ -90,6 +145,7 @@
       this.pendingJoin = null;
       this.createRules = MCS.defaultRules();
       this.createSides = Teams.randomPair();
+      this.openGameRules = new Set();
       this.bind();
     }
 
@@ -141,11 +197,15 @@
       const form = $('createForm'); form.reset();
       form.elements.name.value = `${this.net.name || 'My'}'s game`;
       this.renderCreateSides();
+      const update = (patch) => { this.createRules = MCS.sanitizeRules(patch, this.createRules); rerender(); };
       const rerender = () => {
-        renderRulesEditor($('createRules'), this.createRules, true, (patch) => { this.createRules = MCS.sanitizeRules(patch, this.createRules); });
-        const bt = $('createBoosts') || (() => { const d = el('div', 'boost-grid'); d.id = 'createBoosts'; d.style.gridColumn = '1 / -1'; $('createRules').after(d); return d; })();
-        renderBoostToggles(bt, this.createRules, true, (patch) => { this.createRules = MCS.sanitizeRules(patch, this.createRules); rerender(); });
+        renderRulesEditor($('createRules'), this.createRules, true, update, 'match');
+        renderRulesEditor($('createBoostRules'), this.createRules, true, update, 'boosts');
+        renderRulesEditor($('createRulesAdv'), this.createRules, true, update, 'advanced');
+        renderBoostToggles($('createBoosts'), this.createRules, true, update);
+        $('createBoostCount').textContent = boostSummary(this.createRules);
       };
+      for (const d of document.querySelectorAll('#createForm .rule-sections details')) d.open = false;
       rerender();
       $('createDialog').showModal();
     }
@@ -208,6 +268,7 @@
         meta.appendChild(el('span', null, `${Math.round(g.matchSeconds / 60)} min`));
         if (g.status === 'playing' && g.score) meta.appendChild(el('span', null, `Score ${g.score.red}–${g.score.blue} · ${Math.floor(g.timeLeft / 60)}:${String(g.timeLeft % 60).padStart(2, '0')} left`));
         card.appendChild(meta);
+        renderGameRules(card, g.rules, this.openGameRules, g.id);
         const btn = el('button', g.status === 'playing' ? '' : 'primary', g.status === 'playing' ? 'Join live (take a bot slot)' : g.status === 'ended' ? 'Join for the rematch' : 'Join');
         btn.onclick = () => this.join(g);
         card.appendChild(btn);
@@ -291,8 +352,14 @@
       $('btnStart').onclick = () => this.net.send(room.status === 'ended' ? 'rematch' : 'startGame');
 
       $('rulesHint').textContent = host ? 'You can edit these' : 'Only the host can edit';
-      renderRulesEditor($('roomRules'), room.rules, host && room.status !== 'playing', (patch) => this.net.send('updateRules', { rules: patch }));
-      renderBoostToggles($('roomBoosts'), room.rules, host && room.status !== 'playing', (patch) => this.net.send('updateRules', { rules: patch }));
+      const canEdit = host && room.status !== 'playing', send = (patch) => this.net.send('updateRules', { rules: patch });
+      renderRulesEditor($('roomRules'), room.rules, canEdit, send, 'match');
+      renderRulesEditor($('roomRulesAdv'), room.rules, canEdit, send, 'advanced');
+      renderRulesEditor($('roomBoostRules'), room.rules, canEdit, send, 'boosts');
+      renderBoostToggles($('roomBoosts'), room.rules, canEdit, send);
+      $('boostHint').textContent = boostSummary(room.rules);
+      const advChanged = Object.entries(MCS.RULE_SCHEMA).filter(([k, sc]) => sc.group === 'advanced' && room.rules[k] !== sc.def).length;
+      $('roomRulesAdv').closest('details').querySelector('summary .muted').textContent = advChanged ? `${advChanged} changed` : 'physics, timings, mercy rule';
     }
 
     /** Mode switch and the knockout bracket. */
