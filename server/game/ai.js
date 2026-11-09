@@ -18,6 +18,68 @@ const H = FIELD.height;
 function len(x, y) { return Math.hypot(x, y); }
 function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 
+/**
+ * Where an outfield player should stand when they are not on the ball.
+ * Built from the kickoff formation, shifted with the ball, and stretched out
+ * when the team has the ball so there are passing options (T-40).
+ */
+function shapeSpot(pos, team, b, dir, attacking, style, noise) {
+  const own = dir > 0 ? 0 : W;                       // our goal line x
+  const ahead = (x) => own + dir * x;                 // distance upfield -> world x
+  const bp = (b.x - own) * dir;                       // ball distance from our goal line
+  const side = b.y < H / 2 ? -1 : 1;                  // which flank the ball is on
+  let x, y;
+  if (pos === 'DEF') {
+    const line = 100 + style.defLine * 160;
+    x = attacking ? clamp(bp * 0.45 + 60, line, W * 0.5) : clamp(bp * 0.4 + 40, 90, line + 80);
+    y = H / 2 + (b.y - H / 2) * 0.45;
+  } else if (pos === 'MID') {
+    if (attacking) { x = clamp(bp - 90, W * 0.22, W * 0.72); y = clamp(b.y - side * 150, 80, H - 80); }
+    else { x = clamp(bp - 170, W * 0.15, W * 0.5); y = H / 2 + (b.y - H / 2) * 0.55; }
+  } else { // FWD
+    if (attacking) { x = clamp(bp + 200 + style.passing * 60, W * 0.45, W * 0.86); y = side < 0 ? H * 0.68 : H * 0.32; }
+    else { x = clamp(bp - 40, W * 0.42, W * 0.6); y = side < 0 ? H * 0.62 : H * 0.38; }
+  }
+  return { x: ahead(x), y: y + noise(12) };
+}
+
+/**
+ * Per-team plan, computed once per tick and shared by that team's bots:
+ * who presses the ball and who covers behind them (T-40). Humans count as
+ * pressers too, so bots don't crowd a human team-mate on the ball.
+ */
+function teamPlan(match, team) {
+  const cache = match._teamPlan || (match._teamPlan = {});
+  const prev = cache[team];
+  if (prev && prev.tick === match.tick) return prev;
+  const b = match.ball;
+  const tx = b.x + b.vx * 0.25, ty = b.y + b.vy * 0.25;
+  const outfield = match.players.filter(p => p.team === team && p.pos !== 'GK' && !p.effects.stun);
+  // A team-mate on the ball (or a human near it) owns it: bots never take it off them.
+  const cost = (p) => len(tx - p.x, ty - p.y) - (p.carrying ? 400 : 0) - (!p.isBot ? 45 : 0);
+  const ranked = outfield.slice().sort((a, c) => cost(a) - cost(c));
+  let presser = ranked[0] ? ranked[0].id : null;
+  // Hysteresis: keep the current presser unless someone is clearly better placed.
+  if (prev && prev.presser && presser !== prev.presser) {
+    const cur = match.player(prev.presser);
+    if (cur && cur.team === team && !cur.effects.stun && cost(cur) < cost(ranked[0]) * 1.3 + 25) presser = cur.id;
+  }
+  const dir = match.attackDir(team);
+  const ownHalf = dir > 0 ? b.x < W * 0.55 : b.x > W * 0.45;
+  const poss = match.possession;
+  const theirBall = !(poss && poss.team === team && match.tick - poss.lastTick < 20);
+  let cover = null;
+  if (ownHalf && theirBall) {
+    // The nearest *bot* other than the presser, preferring the defender.
+    const cands = ranked.filter(p => p.id !== presser && p.isBot);
+    const def = cands.find(p => p.pos === 'DEF');
+    cover = (def || cands[0] || {}).id || null;
+  }
+  const plan = { tick: match.tick, presser, cover };
+  cache[team] = plan;
+  return plan;
+}
+
 class BotBrain {
   constructor(slotId, difficulty = 1) {
     this.slotId = slotId;
@@ -269,74 +331,101 @@ class BotBrain {
       return;
     }
 
-    // MID: box-to-box link player (T-37). Wins the ball in the middle third,
-    // moves it on to the forward, and shoots only from a clear look.
-    if (me.pos === 'MID') {
-      const iAmClosest = myDist <= nearestMateDist + 15;
-      if (iAmClosest || myDist < 110 + style.press * 90) {
-        const goalDist = len(oppGoal.x - b.x, oppGoal.y - b.y);
-        const shot = shootTarget();
-        let aimAt = null;
-        if (goalDist < style.shootRange * 0.9 && !laneBlocked(shot, 30)) aimAt = shot;
-        if (!aimAt) aimAt = passTarget();
-        if (!aimAt) aimAt = ballInOwnHalf ? clearTarget() : { x: clamp(b.x + dir * 240, 0, W), y: H / 2 + (b.y - H / 2) * 0.5 };
-        attackBall(aimAt, !ballInOwnHalf);
-        this.lastPlan = aimAt === shot ? 'fwd-attack' : 'def-pass';
+    // ---- Outfield players: one team plan (T-40) ---------------------------
+    // Only the designated presser goes for the ball. Everyone else keeps the
+    // team's shape, covers, or gets open for a pass.
+    const tp = teamPlan(match, me.team);
+    const poss = match.possession;
+    const lt = match.lastTouch;
+    const weHaveIt = !!(poss && poss.team === me.team && match.tick - poss.lastTick < 20)
+      || !!(lt && lt.team === me.team && match.tick - lt.tick < 45);   // includes a pass in flight
+    const theyHaveIt = !!(poss && poss.team !== me.team && match.tick - poss.lastTick < 20);
+    const carrier = theyHaveIt ? match.player(poss.slot) : null;
+
+    if (tp.presser === me.id) {
+      // Jockey an opponent who has the ball: stand goal-side, then commit
+      // to a tackle for a moment, then back off and reset (T-40).
+      if (carrier && len(carrier.x - b.x, carrier.y - b.y) < carrier.r + b.r + 20) {
+        if (this.jockeyFor !== carrier.id) { this.jockeyFor = carrier.id; this.jockeyStart = match.tick; }
+        const t = (match.tick - this.jockeyStart) / MCS.TICK_RATE;
+        // Wait for support in midfield, but don't let a dribbler stroll in on goal.
+        // (Alper: "tackle sooner" — base wait cut from ~0.9 s to ~0.45 s.)
+        const danger = len(carrier.x - ownGoal.x, carrier.y - ownGoal.y) < 380 ? 0.5 : 1;
+        const wait = clamp((0.7 - style.press * 0.3) * danger / this.difficulty, 0.15, 0.9);
+        if (t < wait) {
+          let gx = ownGoal.x - carrier.x, gy = ownGoal.y - carrier.y; const gl = len(gx, gy) || 1;
+          this.target = { x: carrier.x + gx / gl * 58, y: carrier.y + gy / gl * 58 };
+          this.lastPlan = 'jockey';
+          return;
+        }
+        if (t > wait + 1.0) { this.jockeyStart = match.tick; return; }   // tackle window over: back off
+        // Tackle: go straight in at the ball and poke it away (to a team-mate
+        // if one is open, else clear), whichever side we arrive from.
+        this.target = { x: b.x + b.vx * 0.08, y: b.y + b.vy * 0.08 };
+        this.aim = passTarget() || clearTarget();
+        this.wantKick = myDist < me.r + b.r + Physics.FEEL.kickRange + 4;
+        if (myDist > 70 && me.dashCooldown === 0 && this.dashRoll < style.dash * 0.6) this.wantDash = true;
+        this.lastPlan = 'tackle';
         return;
+      } else {
+        this.jockeyFor = null;
       }
-      // Hold the middle: trail the ball upfield, shade toward its side,
-      // and stay on the opposite flank to the forward's support run.
-      const hx = clamp(b.x - dir * (90 - style.press * 40), W * 0.18, W * 0.82);
-      const hy = H / 2 + (b.y - H / 2) * 0.45;
-      this.target = spaced({ x: hx, y: hy + noise(14) });
-      this.lastPlan = 'mid-hold';
+      this.playBall(match, me, { b, dir, ownGoal, oppGoal, style, opps, ballInOwnHalf, shootTarget, clearTarget, passTarget, laneBlocked, attackBall });
       return;
     }
 
-    if (me.pos === 'DEF') {
-      const iAmClosest = myDist <= nearestMateDist + 10;
-      const highPress = !ballInOwnHalf && style.press > 0.7 && iAmClosest && myDist < 260;
-      if ((ballInOwnHalf && iAmClosest) || myDist < 90 + style.press * 110 || highPress) {
-        const pass = passTarget();
-        attackBall(pass || clearTarget(), ballInOwnHalf);
-        this.lastPlan = pass ? 'def-pass' : 'def-challenge';
-        return;
-      }
-      // Hold a covering position between ball and own goal.
-      // How high the defender holds depends on the nation's defensive line.
-      const gx = ownGoal.x + dir * (100 + style.defLine * 220);
-      const t = 0.35 + style.defLine * 0.3;
-      const cx = gx + (b.x - gx) * t;
-      const cy = H / 2 + (b.y - H / 2) * 0.6;
-      const maxAdvance = 0.5 + style.defLine * 0.3;   // fraction of the pitch the defender may reach
-      const limitX = dir > 0 ? Math.min(cx, W * maxAdvance) : Math.max(cx, W * (1 - maxAdvance));
-      this.target = spaced({ x: limitX, y: cy + noise(10) });
-      this.lastPlan = 'def-cover';
+    if (tp.cover === me.id) {
+      // Second man: sit between the ball and our goal, ready to block.
+      let gx = ownGoal.x - b.x, gy = ownGoal.y - b.y; const gl = len(gx, gy) || 1;
+      const d = Math.min(130, gl * 0.45);
+      this.target = { x: b.x + gx / gl * d, y: b.y + gy / gl * d };
+      this.lastPlan = 'cover';
       return;
     }
 
-    // FWD
-    const iAmClosest = myDist <= nearestMateDist + 20;
-    if (iAmClosest || !ballInOwnHalf || myDist < 140 + style.press * 100) {
-      const goalDist = len(oppGoal.x - b.x, oppGoal.y - b.y);
-      const shot = shootTarget();
-      let aimAt = shot;
-      // Out of this nation's shooting range, blocked, or simply a passing side:
-      // look for a pass unless we are holding a rocket kick.
-      const passingMood = style.passing > 0.7 && goalDist > 260 && this.dashRoll < style.passing - 0.4;
-      if (!me.effects.rocket && (goalDist > style.shootRange || laneBlocked(shot, 30) || passingMood)) {
-        const pass = passTarget();
-        if (pass) aimAt = pass;
-      }
-      attackBall(aimAt, true);
-      this.lastPlan = aimAt === shot ? 'fwd-attack' : 'fwd-pass';
+    let spot = spaced(shapeSpot(me.pos, me.team, b, dir, weHaveIt, style, noise));
+    // Give a team-mate on the ball room: never park on top of them.
+    if (poss && poss.team === me.team && match.tick - poss.lastTick < 5 && len(spot.x - b.x, spot.y - b.y) < 90) {
+      const ax = spot.x - b.x, ay = spot.y - b.y, al = len(ax, ay) || 1;
+      spot = { x: b.x + ax / al * 90, y: b.y + ay / al * 90 };
+    }
+    this.target = spot;
+    this.lastPlan = weHaveIt ? 'support' : 'shape';
+  }
+
+  /**
+   * The presser's decision on the ball: shoot from a clear look, pass to an
+   * open team-mate, carry it forward when there is room, else clear.
+   */
+  playBall(match, me, c) {
+    const { b, dir, oppGoal, style, opps, ballInOwnHalf, shootTarget, clearTarget, passTarget, laneBlocked, attackBall } = c;
+    const goalDist = len(oppGoal.x - b.x, oppGoal.y - b.y);
+    const shot = shootTarget();
+    const myDist = len(b.x - me.x, b.y - me.y);
+    const pressure = opps.some(o => len(o.x - b.x, o.y - b.y) < 85);
+    const range = me.pos === 'DEF' ? style.shootRange * 0.7 : me.pos === 'MID' ? style.shootRange * 0.9 : style.shootRange;
+    if ((goalDist < range && !laneBlocked(shot, 30)) || me.effects.rocket) {
+      attackBall(shot, true); this.lastPlan = 'fwd-attack'; return;
+    }
+    const pass = passTarget();
+    // Under pressure or a passing side: move it on. Otherwise carry it.
+    if (pass && (pressure || this.dashRoll < 0.35 + style.passing * 0.5)) {
+      attackBall(pass, false); this.lastPlan = me.pos === 'DEF' ? 'def-pass' : 'fwd-pass'; return;
+    }
+    if (!pressure && me.carrying) {
+      // Dribble: steer the ball toward goal, no kick.
+      const ax = oppGoal.x - b.x, ay = (H / 2 + (b.y - H / 2) * 0.4) - b.y, al = len(ax, ay) || 1;
+      this.target = { x: b.x + ax / al * 40, y: b.y + ay / al * 40 };
+      this.aim = { x: oppGoal.x, y: H / 2 };
+      this.wantKick = false;
+      this.lastPlan = 'dribble';
       return;
     }
-    // Support: get ahead of the ball on the far side for a pass.
-    const sx = clamp(b.x + dir * (140 + style.passing * 90), W * 0.12, W * 0.88);
-    const sy = b.y < H / 2 ? H * 0.72 : H * 0.28;
-    this.target = spaced({ x: sx, y: sy + noise(15) });
-    this.lastPlan = 'fwd-support';
+    if (pass) { attackBall(pass, false); this.lastPlan = 'fwd-pass'; return; }
+    if (ballInOwnHalf && pressure) { attackBall(clearTarget(), true); this.lastPlan = 'def-challenge'; return; }
+    // Loose ball or no pressure: go and collect it, nudging it upfield.
+    attackBall({ x: clamp(b.x + dir * 260, 0, W), y: H / 2 + (b.y - H / 2) * 0.5 }, myDist > 120);
+    this.lastPlan = 'collect';
   }
 
   /**

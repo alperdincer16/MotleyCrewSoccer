@@ -19,6 +19,8 @@ seat a human doesn't take.
   England's thunderbolt, Italy's sliding tackle, Spain's laser pass,
   France's glued-ball sprint, Belgium's shockwave...). Fill the meter by
   playing, then press `E`.
+* **Team play**: bots keep a shape, one presses while the rest cover and
+  get open, and a dribbler can only be robbed by a real tackle.
 * **Close control**: passes are cushioned on the first touch, the ball
   stays at your feet while you dribble and turns with you, and a kick off
   a controlled ball goes where you aim.

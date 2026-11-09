@@ -19,7 +19,7 @@ const { FEEL } = Physics;
 const W = FIELD.width;
 const H = FIELD.height;
 
-const EFFECT_FLAGS = { speed: 1, rocket: 2, frozen: 4, shrink: 8, magnet: 16, shield: 32, slide: 64, sticky: 128, armed: 256, stun: 512 };
+const EFFECT_FLAGS = { speed: 1, rocket: 2, frozen: 4, shrink: 8, magnet: 16, shield: 32, slide: 64, sticky: 128, armed: 256, stun: 512, stumble: 1024 };
 const BALL_FLAGS = { giant: 1, thunder: 2, fire: 4, laser: 8 };
 const ARMED_SECONDS = 5;        // a kick-type signature move stays armed this long
 const COMBO_PASSES = 3;         // completed passes in a row that power up the next shot
@@ -54,6 +54,7 @@ class Match {
     this.nextPickupId = 1;
     this.pickupTimer = this.rules.pickupInterval * 0.6;
     this.lastTouch = null;   // { slot, team, tick }
+    this.possession = null;  // { slot, team, since, lastTick, protectUntil } while someone has the ball on their foot (T-41)
     this.prevTouch = null;
     this.lastKick = null;
     this.combo = { red: { chain: 0, ready: false }, blue: { chain: 0, ready: false } };
@@ -130,6 +131,7 @@ class Match {
       p.y = p.team === 'red' ? f.fy * H : (1 - f.fy) * H;
       p.vx = 0; p.vy = 0; p.dashTime = 0;
     }
+    this.possession = null;
     const b = this.ball;
     b.x = W / 2; b.y = H / 2; b.vx = 0; b.vy = 0; b.z = 0; b.vz = 0; b.spin = 0; b.owner = null;
     this.combo.red.chain = 0; this.combo.blue.chain = 0; this.combo.red.ready = false; this.combo.blue.ready = false;
@@ -349,7 +351,14 @@ class Match {
     const d = len(dx, dy);
     const minD = b.r + p.r;
     if (d >= minD || d === 0) return;
-    const nx = dx / d, ny = dy / d;
+    let nx = dx / d, ny = dy / d;
+    // Protected ball: the opponent bounces off it instead of knocking it away.
+    if (this.ballProtectedFrom(p, 'body')) {
+      p.x -= nx * (minD - d); p.y -= ny * (minD - d);
+      const vn0 = p.vx * nx + p.vy * ny;
+      if (vn0 > 0) { p.vx -= nx * vn0 * 1.2; p.vy -= ny * vn0 * 1.2; }
+      return;
+    }
     // Thunderbolt: ploughs through outfield players, shoving them aside.
     if (b.effects.thunder && p.pos !== 'GK' && p.team !== b.owner) {
       p.vx += b.vx * 0.35; p.vy += b.vy * 0.35;
@@ -357,6 +366,18 @@ class Match {
       return;
     }
     if (b.effects.thunder && p.pos === 'GK') { p.vx += b.vx * 0.25; p.vy += b.vy * 0.25; delete b.effects.thunder; }
+    // Hands on the line (T-41): right by your own goal, a body touch can't
+    // send the ball backwards. Players are always on the pitch side of a ball
+    // rolling along the end wall, so without this every block is an own goal.
+    {
+      const dirA = this.attackDir(p.team), ownX = this.goalCenter(p.team).x;
+      const zone = p.pos === 'GK' ? 70 : 30;
+      if (Math.abs(b.x - ownX) < zone && Math.abs(b.y - H / 2) < this.goalHalfWidth() + 40 && nx * dirA < 0.15) {
+        const fx = 0.15 * dirA, fy = ny === 0 ? 1 : Math.sign(ny);
+        const l = len(fx, fy * Math.max(0.3, Math.abs(ny)));
+        nx = fx / l; ny = fy * Math.max(0.3, Math.abs(ny)) / l;
+      }
+    }
     const speedBefore = len(b.vx, b.vy);
     const overlap = minD - d;
     const ballShare = b.effects.giant ? 0.7 : 1;
@@ -436,12 +457,17 @@ class Match {
     if (b.z > FEEL.headHeight || b.effects.thunder || b.effects.laser) return;
     let best = null, bestD = Infinity;
     for (const p of this.players) {
+      if (this.ballProtectedFrom(p, 'body')) continue;
       const d = len(b.x - p.x, b.y - p.y) - p.r - b.r;
       if (d < bestD) { bestD = d; best = p; }
     }
+    // The current carrier keeps the ball while it is still at their feet, even
+    // if a team-mate brushes past closer to it (T-41).
+    const pos = this.possession, cur = pos && this.tick - pos.lastTick <= 2 ? this.player(pos.slot) : null;
+    if (cur && cur !== best && len(b.x - cur.x, b.y - cur.y) - cur.r - b.r < FEEL.carryReach && (!best || best.team === cur.team)) { best = cur; bestD = 0; }
     const p = best;
     if (!p || bestD > FEEL.carryReach) return;
-    if (p.dashTime > 0 || p.effects.stun || p.effects.frozen || p.effects.slide || p.effects.sticky) return;
+    if (p.dashTime > 0 || p.effects.stun || p.effects.stumble || p.effects.frozen || p.effects.slide || p.effects.sticky) return;
     if (p.kickCooldown > FEEL.kickCooldown - 0.15) return;
     if (len(b.vx - p.vx, b.vy - p.vy) > FEEL.carryMaxRel) return;
     let mx = (p.input.right ? 1 : 0) - (p.input.left ? 1 : 0);
@@ -451,6 +477,10 @@ class Match {
     if (ml) { mx /= ml; my /= ml; }
     // No input, or running away from a ball behind you: just trap it where it is.
     if (!ml || (mx * dx + my * dy) / d < -0.3) { mx = dx / d; my = dy / d; }
+    // Never hold or steer the ball toward your own goal mouth near goal (T-41):
+    // a ball sitting goal-side of you there is one bump from an own goal.
+    const ownX = this.goalCenter(p.team).x, dirA = this.attackDir(p.team);
+    if (Math.abs(b.x - ownX) < 160 && Math.abs(b.y - H / 2) < this.goalHalfWidth() + 60 && (mx * dirA < 0.2)) return;
     const reach = p.r + b.r + 2;
     const tx = p.x + mx * reach, ty = p.y + my * reach;
     let cx = (tx - b.x) * 9, cy = (ty - b.y) * 9;
@@ -459,11 +489,42 @@ class Match {
     const wantVx = p.vx + cx, wantVy = p.vy + cy;
     let grip = FEEL.carryGrip;
     for (const o of this.players) {
-      if (o.team !== p.team && len(o.x - b.x, o.y - b.y) < o.r + b.r + FEEL.carryReach + 6) { grip *= 0.5; break; }
+      if (o.team !== p.team && len(o.x - b.x, o.y - b.y) < o.r + b.r + FEEL.carryReach + 6) { grip *= FEEL.carryContested; break; }
     }
     const k = 1 - Math.pow(1 - grip, dt * 60);
     b.vx += (wantVx - b.vx) * k; b.vy += (wantVy - b.vy) * k;
     p.carrying = true;
+    this.trackPossession(p);
+  }
+
+  /**
+   * Possession (T-41): who has the ball on their foot. Winning it gives a
+   * short protection window in which opponents can't kick it or knock it
+   * off you, and the player who lost it can't snatch it straight back.
+   */
+  trackPossession(p) {
+    const now = this.tick, pos = this.possession;
+    if (pos && pos.slot === p.id) { pos.lastTick = now; return; }
+    const loser = pos && now - pos.lastTick < 30 && pos.team !== p.team ? pos.slot : null;
+    this.possession = {
+      slot: p.id, team: p.team, since: now, lastTick: now,
+      protectUntil: now + Math.round(FEEL.protectTime * MCS.TICK_RATE),
+      loser, loserUntil: loser ? now + Math.round(FEEL.regainTime * MCS.TICK_RATE) : 0,
+    };
+  }
+
+  /**
+   * Is the ball shielded from player p right now? A ball under close control
+   * can't be knocked off the carrier by bumping into it (kind 'body'); it
+   * takes a real tackle, i.e. a kick, and even that has to wait out the
+   * protection window after the ball was won (kind 'kick'). Slides ignore it.
+   */
+  ballProtectedFrom(p, kind) {
+    const pos = this.possession;
+    if (!pos || pos.team === p.team || p.effects.slide) return false;
+    if (this.tick - pos.lastTick > 2) return false;          // carrier has lost close control
+    if (kind === 'body') return true;
+    return this.tick < pos.protectUntil || (p.id === pos.loser && this.tick < pos.loserUntil);
   }
 
   /** Was the ball heading into p's goal before this touch? (uses the last recorded heading) */
@@ -480,9 +541,10 @@ class Match {
   tryKick(p, dt) {
     const wantsLob = p.input.lob;
     const wants = p.input.kick || wantsLob || p.kickBuffer > 0;
-    if (!wants || p.kickCooldown > 0 || p.effects.frozen || p.effects.stun) return;
+    if (!wants || p.kickCooldown > 0 || p.effects.frozen || p.effects.stun || p.effects.stumble) return;
     const b = this.ball;
     if (b.z > (p.pos === 'GK' ? FEEL.keeperReach : FEEL.headHeight)) return;
+    if (this.ballProtectedFrom(p, 'kick')) return;
     const dx = b.x - p.x, dy = b.y - p.y;
     const d = len(dx, dy);
     if (d > b.r + p.r + FEEL.kickRange) return;
@@ -502,6 +564,9 @@ class Match {
     }
     // Charge: 0 for a tap, 1 for a full hold.
     const charge = clamp((p.chargeT - FEEL.chargeStart) / (FEEL.chargeFull - FEEL.chargeStart), 0, 1);
+    // Tackle (T-43): kicking a ball an opponent has on their foot.
+    const pos = this.possession;
+    const stealFrom = pos && pos.team !== p.team && this.tick - pos.lastTick <= 2 ? this.player(pos.slot) : null;
     let power = FEEL.kickSpeed * this.rules.kickPower * this.traits[p.team].kick * (1 + FEEL.chargeBonus * charge);
     let rocket = false, special = null, comboShot = false;
     let spin = p.input.curve * FEEL.curveMax;
@@ -555,6 +620,13 @@ class Match {
     this.addMeter(p, 0.06);
     this.registerTouch(p, true);
     this.emit({ type: 'kick', slot: p.id, team: p.team, x: b.x, y: b.y, power: power / FEEL.kickSpeed, rocket, lob: b.vz > 0, curve: Math.round(b.spin * 100) / 100, charge: Math.round(charge * 100) / 100, special, combo: comboShot });
+    if (stealFrom) {
+      p.stats.tackles = (p.stats.tackles || 0) + 1;
+      this.possession = null;
+      // The tackled player stumbles for a moment (slower, can't kick).
+      if (!stealFrom.effects.shield) stealFrom.effects.stumble = 0.35;
+      this.emit({ type: 'steal', slot: p.id, victim: stealFrom.id, team: p.team, x: b.x, y: b.y, dx: Math.round(nx * 100) / 100, dy: Math.round(ny * 100) / 100 });
+    }
   }
 
   /** Where a laser pass goes: the best-placed team-mate's run, else the far corner. */

@@ -57,6 +57,10 @@ recorded here, in the header comment of each source file, and in the
 | T-37 | 4v4: midfielder (MID) slot, formation, MID bot brain, keeper sweeps loose balls off the goal line | Mei Lin (bots) / Diego Ferreira (formation) | Done |
 | T-38 | Ball control: cushioned first touch, close dribbling with turning, aim-true kicks off a controlled ball, snappier turns | Diego Ferreira | Done |
 | T-39 | Tests for T-37 and T-38 | Rosa Vidal | Done |
+| T-40 | Team play for bots: one presser per team, a cover man in our half, formation shape that shifts with the ball and stretches out in possession, jockeying instead of diving in, dribbling and passing to open team-mates | Mei Lin | Done |
+| T-41 | Possession: body bumps can't knock the ball off a dribbler (only a tackle can), 0.7 s protection after winning it, no instant re-steal, stickier dribbling, keepers can't bundle a goal-line ball into their own net | Diego Ferreira | Done |
+| T-42 | Tests for T-40 and T-41; bot-match chaos metrics | Rosa Vidal | Done |
+| T-43 | Tackles: bots commit sooner and go straight in at the ball; tackle animation (lunge with motion smear, dust, impact ring, TACKLE! callout, victim stumble with stars); tackled player can't kick for 0.35 s | Mei Lin (bots) / Tomasz Nowak (animation) | Done |
 
 ## Working agreements
 

@@ -16,7 +16,7 @@
     grass1: '#2f8f46', grass2: '#2a8340', line: 'rgba(255,255,255,.85)',
     wall: '#1c2229', wallEdge: '#3a4654', net: 'rgba(255,255,255,.35)',
   };
-  const FX = { speed: 1, rocket: 2, frozen: 4, shrink: 8, magnet: 16, shield: 32, slide: 64, sticky: 128, armed: 256, stun: 512 };
+  const FX = { speed: 1, rocket: 2, frozen: 4, shrink: 8, magnet: 16, shield: 32, slide: 64, sticky: 128, armed: 256, stun: 512, stumble: 1024 };
   const BF = { giant: 1, thunder: 2, fire: 4, laser: 8 };
   const ARMED_COLORS = { banana: '#ffe066', thunder: '#fff176', laser: '#4cc9f0' };
   // Pitch palettes per arena: two stripe colours, line colour, vignette strength.
@@ -52,6 +52,7 @@
       this.callouts = new Map();  // player id -> { text, color, t }
       this.emotes = new Map();    // player id -> { text, color, t }
       this.rings = [];            // expanding rings (shockwaves, bumper hits)
+      this.tackleAnims = new Map(); // player id -> { kind: 'lunge'|'stumble', t, dur, dx, dy } (T-43)
       this.ballTrail = [];
     }
 
@@ -59,6 +60,31 @@
     setWind(x, y) { this.wind.x = x; this.wind.y = y; }
     callout(id, text, color) { this.callouts.set(id, { text, color, t: 1.6 }); }
     emote(id, text, color) { this.emotes.set(id, { text, color, t: 2.2 }); }
+    /**
+     * Tackle (T-43): the tackler lunges toward the ball with a motion smear,
+     * the victim wobbles and hops with stars, dust and an impact ring at the
+     * contact point, and a "TACKLE!" callout over the tackler.
+     */
+    tackleFx(e, color, ground) {
+      this.tackleAnims.set(e.slot, { kind: 'lunge', t: 0, dur: 0.38, dx: e.dx || 0, dy: e.dy || 0 });
+      if (e.victim) this.tackleAnims.set(e.victim, { kind: 'stumble', t: 0, dur: 0.6, dx: e.dx || 0, dy: e.dy || 0 });
+      this.burst(e.x, e.y, { n: 16, color: ground, speed: 170, life: 0.55, size: 3 });
+      this.burst(e.x, e.y, { n: 6, color: '#ffffff', speed: 240, life: 0.25, size: 2 });
+      this.rings.push({ x: e.x, y: e.y, r: 8, max: 46, t: 0.25, life: 0.25, color: '#ffffff', w: 3 });
+      this.callout(e.slot, 'TACKLE!', color);
+    }
+    /** Current tackle pose for a player: lean, offset, hop, smear strength. */
+    tacklePose(id) {
+      const a = this.tackleAnims.get(id);
+      if (!a) return null;
+      const u = Math.min(1, a.t / a.dur);
+      if (a.kind === 'lunge') {
+        const k = Math.sin(Math.PI * Math.min(1, u * 1.4));          // fast out, slower recovery
+        return { kind: 'lunge', k, ox: a.dx * 12 * k, oy: a.dy * 12 * k, lean: 0.62 * k, hop: 0 };
+      }
+      const fade = 1 - u;
+      return { kind: 'stumble', k: fade, ox: -a.dx * 6 * fade, oy: -a.dy * 6 * fade, lean: Math.sin(a.t * 28) * 0.38 * fade, hop: Math.abs(Math.sin(a.t * 14)) * 7 * fade };
+    }
     bumperHit(x, y) { this.rings.push({ x, y, r: 26, max: 60, t: 0.3, life: 0.3, color: '#7bdff2', w: 4 }); }
     specialFx(x, y, kind, color) {
       if (kind === 'shockwave') {
@@ -105,6 +131,7 @@
         p.vx *= Math.pow(0.3, dt); if (!p.gravity) p.vy *= Math.pow(0.3, dt);
       }
       for (const m of [this.callouts, this.emotes]) for (const [k, v] of m) { v.t -= dt; if (v.t <= 0) m.delete(k); }
+      for (const [k, a] of this.tackleAnims) { a.t += dt; if (a.t >= a.dur) this.tackleAnims.delete(k); }
       for (let i = this.rings.length - 1; i >= 0; i--) { const r = this.rings[i]; r.t -= dt; if (r.t <= 0) this.rings.splice(i, 1); }
       // Wind streaks drift across the pitch.
       const wf = Math.hypot(this.wind.x, this.wind.y);
@@ -398,18 +425,46 @@
       const flip = !!this.facing.get(p.id);
       // Animation frame: kick pose while the kick flash is on, else walk cycle.
       let frame = 0;
-      if (p.kf) frame = 3;
+      const tp = this.tacklePose(p.id);
+      if (p.kf || (tp && tp.kind === 'lunge')) frame = 3;
       else if (speed > 25) frame = Math.floor(this.time * (6 + speed / 40)) % 2 + 1;
 
       const scale = (p.r * 2 * 1.35) / Sprites.H;
       const feetY = p.y + p.r * 0.9;
       const sprite = { team, pos, name: p.name, frame, frozen: !!(fx & FX.frozen), kit: this.kits ? this.kits[team] : null, look: p.look || (this.looks && this.looks[p.id]) || null };
-      const tilt = fx & FX.stun ? (flip ? -1.45 : 1.45) : fx & FX.slide ? (Math.atan2(p.vy, Math.abs(p.vx)) * 0.2 + (flip ? -1.05 : 1.05)) : (p.celebrate || 0);
+      let tilt = fx & FX.stun ? (flip ? -1.45 : 1.45) : fx & FX.slide ? (Math.atan2(p.vy, Math.abs(p.vx)) * 0.2 + (flip ? -1.05 : 1.05)) : (p.celebrate || 0);
+      // Tackle poses (T-43): lunge leans into the ball, stumble wobbles.
+      let ox = 0, oy = 0, hop = p.hop || 0;
+      if (tp && !(fx & (FX.stun | FX.slide))) {
+        ox = tp.ox; oy = tp.oy; hop += tp.hop;
+        if (tp.kind === 'lunge') {
+          const fwd = tp.ox !== 0 ? Math.sign(tp.ox) : (flip ? -1 : 1);
+          tilt += fwd * tp.lean;
+          // Motion smear: two fading copies trailing the lunge.
+          if (tp.k > 0.25) {
+            for (let i = 2; i >= 1; i--) {
+              ctx.save(); ctx.globalAlpha = 0.22 * tp.k / i;
+              ctx.translate(p.x + ox - tp.ox * 0.55 * i, p.y + oy - tp.oy * 0.55 * i); ctx.rotate(tilt * 0.6);
+              Sprites.draw(ctx, sprite, 0, p.r * 0.9, scale, fwd < 0);
+              ctx.restore();
+            }
+          }
+        } else tilt += tp.lean;
+      }
       if (tilt) {
-        ctx.save(); ctx.translate(p.x, p.y); ctx.rotate(tilt);
-        Sprites.draw(ctx, sprite, 0, p.r * 0.9, scale, flip);
+        ctx.save(); ctx.translate(p.x + ox, p.y + oy - hop); ctx.rotate(tilt);
+        Sprites.draw(ctx, sprite, 0, p.r * 0.9, scale, tp && tp.kind === 'lunge' && tp.ox !== 0 ? tp.ox < 0 : flip);
         ctx.restore();
-      } else Sprites.draw(ctx, sprite, p.x, feetY - (p.hop || 0), scale, flip);
+      } else Sprites.draw(ctx, sprite, p.x + ox, feetY + oy - hop, scale, flip);
+      if (tp && tp.kind === 'stumble' && tp.k > 0.05) {
+        for (let i = 0; i < 3; i++) {
+          const a = this.time * 9 + i * 2.1;
+          ctx.save(); ctx.globalAlpha = Math.min(1, tp.k * 1.5);
+          ctx.fillStyle = '#ffd166'; ctx.font = '11px system-ui'; ctx.textAlign = 'center';
+          ctx.fillText('★', p.x + ox + Math.cos(a) * 14, p.y + oy - p.r * 1.7 - hop + Math.sin(a) * 4);
+          ctx.restore();
+        }
+      }
       if (fx & FX.stun) {
         for (let i = 0; i < 3; i++) {
           const a = this.time * 5 + i * 2.1;
