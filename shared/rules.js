@@ -50,9 +50,10 @@
     boostsEnabled:   { label: 'Boost pickups',           kind: 'bool',   def: true, group: 'boosts' },
     pickupInterval:  { label: 'Pickup spawn every (s)',  kind: 'number', def: 8,     min: 3,   max: 30,  step: 1, group: 'boosts' },
     maxPickups:      { label: 'Max pickups on pitch',    kind: 'number', def: 2,     min: 1,   max: 5,   step: 1, group: 'boosts' },
-    kickoffPause:    { label: 'Pause after goal (s)',    kind: 'number', def: 2.5,   min: 0.5, max: 5,   step: 0.5, group: 'advanced' },
+    kickoffPause:    { label: 'Goal replay + pause (s)', kind: 'number', def: 5.5,   min: 0.5, max: 10,  step: 0.5, group: 'advanced' },
     botSkill:        { label: 'Bot skill ×',             kind: 'number', def: 1.0,   min: 0.5, max: 1.5, step: 0.1, group: 'match' },
-    arena:           { label: 'Arena',                   kind: 'enum',   def: 'classic', options: ['classic', 'ice', 'mud', 'wind', 'bumpers'], group: 'match' },
+    arena:           { label: 'Location',                kind: 'enum',   def: 'classic', options: ['classic', 'ice', 'mud', 'bumpers'], group: 'match' },
+    weather:         { label: 'Weather',                 kind: 'enum',   def: 'clear',   options: ['clear', 'wind', 'rain', 'snow', 'night'], group: 'match' },
     specials:        { label: 'Signature moves',         kind: 'bool',   def: true, group: 'match' },
     chaosEvents:     { label: 'Chaos events',            kind: 'bool',   def: true, group: 'match' },
     chaosEvery:      { label: 'Chaos event every (s)',   kind: 'number', def: 35,    min: 15,  max: 120, step: 5, group: 'advanced' },
@@ -68,10 +69,24 @@
       accel: 0.5, speed: 1.08, moveDamp: 0.993, idleDamp: 0.985, ballDrag: 0.005, ballBounce: 1.05 },
     mud:     { label: 'Mud bath', icon: '🟫', desc: 'Heavy legs, heavy ball, dead bounces.',
       accel: 0.85, speed: 0.82, moveDamp: 0.94, idleDamp: 0.84, ballDrag: -0.01, ballBounce: 0.65 },
-    wind:    { label: 'Windy',    icon: '🌬️', desc: 'Gusts change direction and push the ball around. Lobs drift the most.',
-      accel: 1, speed: 1, moveDamp: null, idleDamp: null, ballDrag: 0, ballBounce: 1 },
     bumpers: { label: 'Pinball',  icon: '🔵', desc: 'Four orbiting bumpers fire the ball off at speed.',
       accel: 1, speed: 1, moveDamp: null, idleDamp: null, ballDrag: 0, ballBounce: 1 },
+  };
+
+  // ---- Weather (T-45) ---------------------------------------------------------
+  // Picked alongside the location. Multipliers stack on the location's feel
+  // in shared/physics.js; wind gusts are driven by server/game/match.js.
+  const WEATHER = {
+    clear: { label: 'Clear',  icon: '☀️', desc: 'Dry pitch, good light.',
+      accel: 1, speed: 1, ballDrag: 0, ballBounce: 1 },
+    wind:  { label: 'Windy',  icon: '🌬️', desc: 'Gusts change direction and push the ball around. Lobs drift the most.',
+      accel: 1, speed: 1, ballDrag: 0, ballBounce: 1 },
+    rain:  { label: 'Rain',   icon: '🌧️', desc: 'A slick pitch: the ball skids on and bounces lower, footing is a touch looser.',
+      accel: 0.9, speed: 1, ballDrag: 0.002, ballBounce: 0.85 },
+    snow:  { label: 'Snow',   icon: '❄️', desc: 'The ball holds up in the snow and everyone is a little slower.',
+      accel: 0.92, speed: 0.93, ballDrag: -0.004, ballBounce: 0.8 },
+    night: { label: 'Night',  icon: '🌙', desc: 'Under the floodlights. Plays like a clear day.',
+      accel: 1, speed: 1, ballDrag: 0, ballBounce: 1 },
   };
 
   // ---- Chaos events -----------------------------------------------------------
@@ -118,6 +133,8 @@
   function sanitizeRules(input, base) {
     const out = Object.assign({}, base || defaultRules());
     if (!input || typeof input !== 'object') return out;
+    // Before T-45 wind was an arena; it is now weather on the classic pitch.
+    if (input.arena === 'wind') input = Object.assign({}, input, { arena: 'classic', weather: input.weather || 'wind' });
     for (const k of Object.keys(RULE_SCHEMA)) {
       if (!(k in input)) continue;
       const s = RULE_SCHEMA[k];
@@ -158,7 +175,7 @@
   return {
     FIELD, PLAYER_RADIUS, BALL_RADIUS, TEAMS, POSITIONS, TEAM_SIZE,
     TICK_RATE, SNAPSHOT_RATE, RULE_SCHEMA, BOOSTS, BOOST_IDS, FORMATION,
-    ARENAS, CHAOS, CHAOS_IDS, EMOTES,
+    ARENAS, WEATHER, CHAOS, CHAOS_IDS, EMOTES,
     defaultRules, sanitizeRules, slotId, parseSlot, otherTeam,
   };
 });

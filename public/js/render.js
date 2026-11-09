@@ -46,6 +46,9 @@
       this.kits = null;          // { red, blue } resolved national kits
       this.teamColors = { red: COLORS.red, blue: COLORS.blue };
       this.arena = 'classic';
+      this.weather = 'clear';
+      this.drops = [];           // rain streaks or snowflakes in canvas pixels (T-45)
+      this.nightLayer = null;    // cached floodlight overlay
       this.rules = null;
       this.wind = { x: 0, y: 0 };
       this.windLines = [];
@@ -57,6 +60,7 @@
     }
 
     setArena(a) { if (a !== this.arena) { this.arena = a || 'classic'; this.pitchCache = null; } }
+    setWeather(w) { w = w || 'clear'; if (w !== this.weather) { this.weather = w; this.pitchCache = null; this.drops = []; this.nightLayer = null; } }
     setWind(x, y) { this.wind.x = x; this.wind.y = y; }
     callout(id, text, color) { this.callouts.set(id, { text, color, t: 1.6 }); }
     emote(id, text, color) { this.emotes.set(id, { text, color, t: 2.2 }); }
@@ -135,13 +139,81 @@
       for (let i = this.rings.length - 1; i >= 0; i--) { const r = this.rings[i]; r.t -= dt; if (r.t <= 0) this.rings.splice(i, 1); }
       // Wind streaks drift across the pitch.
       const wf = Math.hypot(this.wind.x, this.wind.y);
-      if (this.arena === 'wind' && wf > 5) {
+      if (this.weather === 'wind' && wf > 5) {
         while (this.windLines.length < 26) this.windLines.push({ x: Math.random() * W, y: Math.random() * H, l: 20 + Math.random() * 50, a: Math.random() });
         for (const w of this.windLines) {
           w.x += this.wind.x * dt * 2.2; w.y += this.wind.y * dt * 2.2;
           if (w.x < -60) w.x = W + 40; if (w.x > W + 60) w.x = -40; if (w.y < -60) w.y = H + 40; if (w.y > H + 60) w.y = -40;
         }
       } else this.windLines.length = 0;
+      this.updateWeather(dt);
+    }
+
+    // ---- Weather (T-45) -----------------------------------------------------
+    updateWeather(dt) {
+      const cw = this.canvas.width, ch = this.canvas.height, d = this.drops;
+      if (this.weather === 'rain') {
+        while (d.length < 260) d.push({ x: Math.random() * cw, y: Math.random() * ch, v: 900 + Math.random() * 500, l: 14 + Math.random() * 18, a: 0.3 + Math.random() * 0.35 });
+        for (const r of d) {
+          r.y += r.v * dt; r.x -= r.v * 0.18 * dt;
+          if (r.y > ch) {
+            if (Math.random() < 0.3 && this.rings.length < 40) this.rings.push({ x: Math.random() * W, y: Math.random() * H, r: 1, max: 7, t: 0.35, life: 0.35, color: 'rgba(200,225,255,.55)', w: 1 });
+            r.y = -r.l; r.x = Math.random() * (cw + 200);
+          }
+        }
+      } else if (this.weather === 'snow') {
+        while (d.length < 140) d.push({ x: Math.random() * cw, y: Math.random() * ch, v: 40 + Math.random() * 60, s: 1.5 + Math.random() * 2.5, ph: Math.random() * 6.28, a: 0.5 + Math.random() * 0.45 });
+        for (const f of d) {
+          f.y += f.v * dt; f.ph += dt * 1.5; f.x += Math.sin(f.ph) * 18 * dt + this.wind.x * 0.1 * dt;
+          if (f.y > ch + 4) { f.y = -4; f.x = Math.random() * cw; }
+        }
+      }
+    }
+
+    drawWeather() {
+      const ctx = this.ctx, cw = this.canvas.width, ch = this.canvas.height;
+      if (this.weather === 'night') {
+        if (!this.nightLayer) this.nightLayer = this.buildNightLayer();
+        ctx.drawImage(this.nightLayer, 0, 0);
+        return;
+      }
+      if (this.weather === 'rain') {
+        ctx.fillStyle = 'rgba(20,30,50,.16)'; ctx.fillRect(0, 0, cw, ch);
+        ctx.lineWidth = 1.6; ctx.lineCap = 'round';
+        for (const r of this.drops) {
+          ctx.strokeStyle = `rgba(200,220,255,${r.a})`;
+          ctx.beginPath(); ctx.moveTo(r.x, r.y); ctx.lineTo(r.x + r.l * 0.18, r.y - r.l); ctx.stroke();
+        }
+      } else if (this.weather === 'snow') {
+        ctx.fillStyle = 'rgba(220,235,255,.06)'; ctx.fillRect(0, 0, cw, ch);
+        for (const f of this.drops) {
+          ctx.fillStyle = `rgba(255,255,255,${f.a})`;
+          ctx.beginPath(); ctx.arc(f.x, f.y, f.s, 0, Math.PI * 2); ctx.fill();
+        }
+      }
+    }
+
+    /** Dark sky with four corner floodlights and a lit pitch, cut out of a navy layer once. */
+    buildNightLayer() {
+      const c = document.createElement('canvas'); c.width = this.canvas.width; c.height = this.canvas.height;
+      const g = c.getContext('2d');
+      g.fillStyle = 'rgba(4,8,24,.78)'; g.fillRect(0, 0, c.width, c.height);
+      g.globalCompositeOperation = 'destination-out';
+      const pools = [[M + W * 0.5, M + H * 0.5, W * 0.6, 0.5]];
+      for (const [x, y] of [[M, M], [M + W, M], [M, M + H], [M + W, M + H]]) pools.push([x, y, W * 0.4, 0.35]);
+      for (const [x, y, r, a] of pools) {
+        const rg = g.createRadialGradient(x, y, 0, x, y, r);
+        rg.addColorStop(0, `rgba(0,0,0,${a})`); rg.addColorStop(1, 'rgba(0,0,0,0)');
+        g.fillStyle = rg; g.fillRect(0, 0, c.width, c.height);
+      }
+      g.globalCompositeOperation = 'source-over';
+      // Floodlight pylons glowing in the corners of the stands.
+      for (const [x, y] of [[M - 40, M - 40], [M + W + 40, M - 40], [M - 40, M + H + 40], [M + W + 40, M + H + 40]]) {
+        const rg = g.createRadialGradient(x, y, 0, x, y, 70);
+        rg.addColorStop(0, 'rgba(255,250,220,.9)'); rg.addColorStop(0.15, 'rgba(255,245,200,.45)'); rg.addColorStop(1, 'rgba(255,245,200,0)');
+        g.fillStyle = rg; g.beginPath(); g.arc(x, y, 70, 0, Math.PI * 2); g.fill();
+      }
+      return c;
     }
 
     // ---- Static pitch (cached) ----------------------------------------------
@@ -213,6 +285,16 @@
         ctx.strokeStyle = 'rgba(123,223,242,.18)'; ctx.setLineDash([6, 8]);
         for (const cx of [W * 0.3, W * 0.7]) { ctx.beginPath(); ctx.ellipse(cx, H / 2, Physics.FEEL.bumperOrbit, Physics.FEEL.bumperOrbit * 1.4, 0, 0, Math.PI * 2); ctx.stroke(); }
         ctx.setLineDash([]);
+      }
+      // Weather on the turf: a wet sheen in rain, a dusting of snow.
+      if (this.weather === 'rain') {
+        ctx.fillStyle = 'rgba(30,60,90,.18)'; ctx.fillRect(0, 0, W, H);
+        let seed = 5; const rr = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+        for (let i = 0; i < 22; i++) { ctx.fillStyle = 'rgba(160,200,230,.12)'; ctx.beginPath(); ctx.ellipse(rr() * W, rr() * H, 25 + rr() * 60, 8 + rr() * 18, 0, 0, Math.PI * 2); ctx.fill(); }
+      } else if (this.weather === 'snow') {
+        ctx.fillStyle = 'rgba(240,248,255,.28)'; ctx.fillRect(0, 0, W, H);
+        let seed = 9; const rr = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+        for (let i = 0; i < 500; i++) { ctx.fillStyle = `rgba(255,255,255,${0.3 + rr() * 0.5})`; ctx.fillRect(rr() * W, rr() * H, 2, 2); }
       }
       // subtle vignette
       const vg = ctx.createRadialGradient(W / 2, H / 2, H * 0.3, W / 2, H / 2, W * 0.75);
@@ -300,6 +382,7 @@
       if (!ballDrawn) this.drawBall(view.ball, dt);
       this.drawRings();
       this.drawParticles();
+      ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); this.drawWeather(); ctx.restore();
       for (const p of sorted) this.drawBubbles(p);
       if (opts.replay) this.drawReplayOverlay();
       if (opts.celebration && window.Celebrate) {

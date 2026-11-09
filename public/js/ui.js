@@ -33,10 +33,11 @@
    * Render a rules editor into `container`.
    * onChange(partialRules) is called with the changed key when editable.
    */
-  function renderRulesEditor(container, rules, editable, onChange, group) {
+  function renderRulesEditor(container, rules, editable, onChange, group, skip) {
     container.innerHTML = '';
     for (const [key, s] of Object.entries(MCS.RULE_SCHEMA)) {
       if (group && (s.group || 'match') !== group) continue;
+      if (skip && skip.includes(key)) continue;
       const row = el('div', 'rule' + (rules[key] !== s.def ? ' changed' : ''));
       row.appendChild(el('span', null, s.label));
       if (s.kind === 'bool') {
@@ -44,14 +45,15 @@
         cb.onchange = () => onChange({ [key]: cb.checked });
         row.appendChild(cb);
       } else if (s.kind === 'enum') {
-        const label = (v) => key === 'arena' && MCS.ARENAS[v] ? `${MCS.ARENAS[v].icon} ${MCS.ARENAS[v].label}` : v;
+        const table = key === 'arena' ? MCS.ARENAS : key === 'weather' ? MCS.WEATHER : null;
+        const label = (v) => table && table[v] ? `${table[v].icon} ${table[v].label}` : v;
         if (editable) {
           const sel = el('select');
           for (const v of s.options) { const o = el('option', null, label(v)); o.value = v; o.selected = v === rules[key]; sel.appendChild(o); }
           sel.onchange = () => onChange({ [key]: sel.value });
           row.appendChild(sel);
         } else row.appendChild(el('span', 'val', label(rules[key])));
-        if (key === 'arena' && MCS.ARENAS[rules[key]]) row.title = MCS.ARENAS[rules[key]].desc;
+        if (table && table[rules[key]]) row.title = table[rules[key]].desc;
       } else if (editable) {
         // `scale` shows a rule in a friendlier unit (match length: minutes) while it is stored as-is (seconds).
         const k = s.scale || 1;
@@ -88,6 +90,21 @@
     }
   }
 
+  /** Big picker cards (location, weather) for the create dialog. (T-45) */
+  function renderChoices(container, table, current, onPick) {
+    container.innerHTML = '';
+    for (const [id, o] of Object.entries(table)) {
+      const b = el('button', 'choice' + (id === current ? ' on' : ''));
+      b.type = 'button'; b.title = o.desc; b.dataset.id = id;
+      b.setAttribute('aria-pressed', id === current ? 'true' : 'false');
+      b.appendChild(el('span', 'ic', o.icon));
+      b.appendChild(el('b', null, o.label));
+      b.appendChild(el('small', null, o.desc));
+      b.onclick = () => onPick(id);
+      container.appendChild(b);
+    }
+  }
+
   /** "5 of 7 on", or "Off" when pickups are disabled. */
   function boostSummary(rules) {
     if (!rules.boostsEnabled) return 'Pickups off';
@@ -106,6 +123,8 @@
     const ar = MCS.ARENAS[rules.arena];
     chip(`⏱ ${rules.matchSeconds / 60} min`, 'Match length');
     if (ar) chip(`${ar.icon} ${ar.label}`, ar.desc);
+    const wx = MCS.WEATHER[rules.weather];
+    if (wx && rules.weather !== 'clear') chip(`${wx.icon} ${wx.label}`, wx.desc);
     if (rules.goalLimit) chip(`First to ${rules.goalLimit}`, 'Goal limit');
     if (rules.suddenDeath) chip('Sudden death', 'Next goal wins if tied at full time');
     if (rules.chaosEvents) chip('🎲 Chaos', `A chaos event every ${rules.chaosEvery}s`);
@@ -201,7 +220,9 @@
       this.renderCreateSides();
       const update = (patch) => { this.createRules = MCS.sanitizeRules(patch, this.createRules); rerender(); };
       const rerender = () => {
-        renderRulesEditor($('createRules'), this.createRules, true, update, 'match');
+        renderRulesEditor($('createRules'), this.createRules, true, update, 'match', ['arena', 'weather']);
+        renderChoices($('createLocation'), MCS.ARENAS, this.createRules.arena, (v) => update({ arena: v }));
+        renderChoices($('createWeather'), MCS.WEATHER, this.createRules.weather, (v) => update({ weather: v }));
         renderRulesEditor($('createBoostRules'), this.createRules, true, update, 'boosts');
         renderRulesEditor($('createRulesAdv'), this.createRules, true, update, 'advanced');
         renderBoostToggles($('createBoosts'), this.createRules, true, update);

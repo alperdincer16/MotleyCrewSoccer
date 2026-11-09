@@ -88,6 +88,7 @@
       this.setSides(sides || (this.room && this.room.sides));
       this.renderer.setGoalWidth(this.rules.goalWidth);
       this.renderer.setArena(this.rules.arena);
+      this.renderer.setWeather(this.rules.weather);
       this.renderer.rules = this.rules;
       this.renderer.particles = [];
       this.el.chaos.classList.add('hidden'); this.el.wind.classList.add('hidden'); this.el.eventCard.className = 'event-card hidden'; clearTimeout(this.eventTimer);
@@ -186,7 +187,7 @@
       else this.clock.offset += 0.25;   // creep upward so a worsening link is re-learned
 
       this.snaps.push({ recv: now, data: snap });
-      if (this.snaps.length > 150) this.snaps.shift();
+      if (this.snaps.length > 300) this.snaps.shift();   // ~10 s of history, enough for the goal replay
       this.handleEvents(snap, now);
       this.setScore(snap.score.red, snap.score.blue);
       let tag = '';
@@ -307,12 +308,18 @@
     }
 
     // ---- Instant replay -----------------------------------------------------
+    /**
+     * Goal replay (T-45): up to the last 4 s of build-up, at about real speed,
+     * after a short hold on the goal frame. It ends about a second before the
+     * restart whistle, so the live view settles before kick-off.
+     */
     startReplay(now) {
-      const span = 1400;
+      const HOLD = 350, GAP = 1000;
+      const duration = Math.max(1200, Math.min(4500, this.rules.kickoffPause * 1000 - HOLD - GAP));
+      const span = Math.min(4000, duration);
       const snaps = this.snaps.filter(s => s.recv >= now - span);
       if (snaps.length < 4) return;
-      const duration = Math.max(1200, Math.min(3000, this.rules.kickoffPause * 1000 * 0.85));
-      this.replay = { snaps, start: now + 350, duration, span: snaps[snaps.length - 1].recv - snaps[0].recv, first: snaps[0].recv };
+      this.replay = { snaps, start: now + HOLD, duration, span: snaps[snaps.length - 1].recv - snaps[0].recv, first: snaps[0].recv };
     }
     replayView(now) {
       const r = this.replay;
@@ -431,7 +438,7 @@
         slot, team, pos, name, look, kit: this.kits ? this.kits[team] : null,
         color: this.teamColors ? this.teamColors[team] : '#ffd166', nation: this.nationName(team),
         kind: Sprites.celebrationFor(name, look), start: now + 300,
-        duration: Math.max(1.6, this.rules.kickoffPause - 0.2),
+        duration: Math.max(1.6, Math.min(4.2, this.rules.kickoffPause - 1.2)),
       };
       this.audio.celebrate();
     }
