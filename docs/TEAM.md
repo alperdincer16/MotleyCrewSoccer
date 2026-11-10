@@ -66,6 +66,7 @@ recorded here, in the header comment of each source file, and in the
 | T-46 | Real stadium locations (National Stadium, Old Town Ground, Seaside Arena, Alpine Park, Rooftop Cage, Desert Bowl) with their own stands, hoardings, walls and mowing patterns; ice/mud/pinball move to Advanced as "Special pitch" | Tomasz Nowak (looks) / Sam Okafor (picker) | Done |
 | T-47 | Livelier crowd: fans drawn with varied skin, hair, kids, hats, scarves, face paint and casual clothes; denser staggered stands with coloured seats per location, team banners and two-colour flags | Tomasz Nowak | Done |
 | T-48 | Remove the crowd entirely: no fans, flags or banners in the stands and no crowd audio (murmur, roars, gasps, claps); stands and hoardings stay as empty terraces per location | Tomasz Nowak | Done |
+| T-49 | Bigger pitch: field 1200×700 → 1400×820 (~17%), canvas and markings follow; goals, formations and bot shape stay proportional | Diego Ferreira | Done |
 
 ## Working agreements
 

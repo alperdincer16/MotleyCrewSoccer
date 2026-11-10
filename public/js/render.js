@@ -2,9 +2,9 @@
  * public/js/render.js — Canvas renderer: pitch, players, ball, pickups, FX.
  * Owner: Tomasz Nowak (T-15)
  *
- * World coordinates are 1200×700 (see shared/rules.js). The canvas is
- * 1320×820: a 60-unit border all around so the goal pockets (depth 50)
- * and a little wall thickness fit on screen.
+ * World coordinates are 1400×820 (see shared/rules.js). The canvas is
+ * the field plus FIELD.margin on every side (1644×1064), so the goal pockets,
+ * hoardings and stands fit on screen.
  */
 (function () {
   'use strict';
@@ -347,13 +347,13 @@
       // Lines
       ctx.strokeStyle = surf.line; ctx.lineWidth = 3; ctx.lineJoin = 'round';
       ctx.beginPath(); ctx.moveTo(W / 2, 0); ctx.lineTo(W / 2, H); ctx.stroke();
-      ctx.beginPath(); ctx.arc(W / 2, H / 2, 100, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(W / 2, H / 2, 115, 0, Math.PI * 2); ctx.stroke();
       ctx.beginPath(); ctx.arc(W / 2, H / 2, 5, 0, Math.PI * 2); ctx.fillStyle = surf.line; ctx.fill();
       // Boxes
-      const boxW = 170, boxH = gh * 2 + 160;
+      const boxW = 195, boxH = gh * 2 + 185;   // markings scale with the T-49 pitch
       ctx.strokeRect(0, H / 2 - boxH / 2, boxW, boxH); ctx.strokeRect(W - boxW, H / 2 - boxH / 2, boxW, boxH);
-      ctx.beginPath(); ctx.arc(boxW, H / 2, 70, -Math.PI / 2, Math.PI / 2); ctx.stroke();
-      ctx.beginPath(); ctx.arc(W - boxW, H / 2, 70, Math.PI / 2, Math.PI * 1.5); ctx.stroke();
+      ctx.beginPath(); ctx.arc(boxW, H / 2, 80, -Math.PI / 2, Math.PI / 2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(W - boxW, H / 2, 80, Math.PI / 2, Math.PI * 1.5); ctx.stroke();
       // Goal lines (the wall is open here)
       ctx.lineWidth = 3;
 
