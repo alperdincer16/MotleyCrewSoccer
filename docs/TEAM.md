@@ -67,6 +67,7 @@ recorded here, in the header comment of each source file, and in the
 | T-47 | Livelier crowd: fans drawn with varied skin, hair, kids, hats, scarves, face paint and casual clothes; denser staggered stands with coloured seats per location, team banners and two-colour flags | Tomasz Nowak | Done |
 | T-48 | Remove the crowd entirely: no fans, flags or banners in the stands and no crowd audio (murmur, roars, gasps, claps); stands and hoardings stay as empty terraces per location | Tomasz Nowak | Done |
 | T-49 | Bigger pitch: field 1200×700 → 1400×820 (~17%), canvas and markings follow; goals, formations and bot shape stay proportional | Diego Ferreira | Done |
+| T-50 | Leave match: ✕ Leave button on the pitch (and Esc) with a confirm dialog; a bot takes over the slot and the others get a chat notice | Sam Okafor (UI) / Priya Natarajan (server) | Done |
 
 ## Working agreements
 

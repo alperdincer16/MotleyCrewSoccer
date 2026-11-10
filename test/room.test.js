@@ -77,8 +77,11 @@ test('start builds the match with humans in their slots and bots elsewhere; leav
   assert.equal(m.players.filter(p => p.isBot).length, MCS.TEAM_SIZE * 2 - 2);
 
   // Mid-match: guest leaves → bot takes over; spectator joins and claims a slot
+  host.clear();
   room.disconnectPlayer(guest, true);
   assert.equal(m.player('blue:DEF').isBot, true);
+  assert.equal(guest.room, null); assert.equal(room.players.has(guest.id), false);
+  assert.match(host.last('chat').text, /Guest left the match/);   // T-50
   const late = new FakeClient('l1', 'Late'); lobby.addClient(late);
   lobby.joinRoom(late, { roomId: room.id });
   assert.ok(late.last('matchStart'), 'late joiner gets matchStart');

@@ -92,6 +92,28 @@
   net.on('emote', (msg) => { if (game.active) game.showEmote(msg.slot, msg.id); });
   net.on('error', (msg) => ui.error(msg.message || msg.code));
 
+  // T-50: leave a running match (button or Esc) with a quick confirm.
+  const leaveDialog = $('leaveDialog');
+  const askLeave = () => {
+    if (!ui.room || leaveDialog.open) return;
+    const me = ui.room.players && ui.room.players.find(p => p.id === net.id);
+    const playing = ui.room.status === 'playing';
+    $('leaveText').textContent = playing && me && me.slot
+      ? 'A bot takes over your player and you go back to the lobby.'
+      : 'You go back to the lobby.';
+    leaveDialog.showModal();
+    $('leaveStay').focus();
+  };
+  $('btnLeaveGame').onclick = askLeave;
+  leaveDialog.addEventListener('close', () => { if (leaveDialog.returnValue === 'leave') net.send('leaveGame'); leaveDialog.returnValue = ''; });
+  window.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.repeat || leaveDialog.open) return;
+    if (!$('screen-game').classList.contains('active') || !$('results').classList.contains('hidden')) return;
+    if (document.activeElement && document.activeElement.tagName === 'INPUT') return;
+    e.preventDefault();   // otherwise this same Esc press closes the dialog it just opened
+    askLeave();
+  }, true);   // capture: runs before the game's handler blurs the chat box on Esc
+
   $('btnRematch').onclick = () => net.send('rematch');
   $('btnResultsLeave').onclick = () => net.send('leaveGame');
 

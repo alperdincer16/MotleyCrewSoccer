@@ -223,6 +223,7 @@
       <div class="bar"><div id="skillFill"></div></div>
     </div>
     <div id="netInfo"></div>
+    <button id="btnLeaveGame" class="ghost small leave-game" type="button" title="Leave the match (Esc)">✕ Leave</button>
     <div id="banner" class="banner hidden"></div>
     <div id="eventCard" class="event-card hidden" aria-live="polite"></div>
     <div id="toasts"></div>
@@ -261,6 +262,17 @@
     </div>
   </div>
 </main>
+
+<dialog id="leaveDialog">
+  <form method="dialog" id="leaveForm">
+    <h2>Leave this match?</h2>
+    <p class="muted" id="leaveText">A bot takes over your player and you go back to the lobby.</p>
+    <div class="row end">
+      <button type="submit" value="stay" class="ghost" id="leaveStay" autofocus>Keep playing</button>
+      <button type="submit" value="leave" class="danger" id="leaveConfirm">Leave match</button>
+    </div>
+  </form>
+</dialog>
 
 <div id="errorToast" class="hidden"></div>
 
