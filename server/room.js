@@ -115,7 +115,13 @@ class Room {
   disconnectPlayer(client, immediate) {
     const p = this.players.get(client.id);
     if (!p) return;
-    if (immediate || this.status !== 'playing') { this.removePlayer(client.id); return; }
+    if (immediate || this.status !== 'playing') {
+      const midMatch = this.status === 'playing' && p.slot;
+      this.removePlayer(client.id);
+      // T-50: tell the others when someone walks out of a running match.
+      if (midMatch && this.players.size) this.systemChat(`${p.name} left the match. A bot takes over.`);
+      return;
+    }
     p.connected = false; p.client = null;
     if (p.slot && this.match) this.match.setBot(p.slot); // bot covers while they are away
     p.graceTimer = setTimeout(() => this.removePlayer(client.id), DISCONNECT_GRACE_MS);

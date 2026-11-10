@@ -25,6 +25,8 @@ button.primary:hover { background: #ffdc85; }
 button.ghost { background: transparent; }
 button.ghost:hover { background: var(--hover); }
 button.small { padding: 5px 10px; font-size: 13px; }
+button.danger { background: var(--red); color: #fff; border-color: transparent; font-weight: 700; }
+button.danger:hover { background: #ff6b79; }
 button.big { padding: 11px 22px; font-size: 16px; }
 button:disabled, button:disabled:hover { opacity: .45; cursor: not-allowed; background: var(--card); border-color: var(--line); }
 button.primary:disabled, button.primary:disabled:hover { background: var(--accent); border-color: transparent; }
@@ -224,7 +226,10 @@ details .rules-grid { margin-top: 8px; }
 .banner small { display: block; margin-top: 6px; font-size: clamp(12px, 1.4vw, 17px); font-weight: 600; letter-spacing: 0; opacity: .9; }
 .banner.red { color: var(--teamRed); } .banner.blue { color: var(--teamBlue); } .banner.gold { color: var(--accent); }
 @keyframes pop { from { transform: translate(-50%, -50%) scale(.4); opacity: 0; } to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
-#toasts { position: absolute; right: 12px; top: 12px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
+/* T-50: leave button sits top-right; toasts start below it. */
+.leave-game { position: absolute; right: 12px; top: 10px; background: rgba(10,12,16,.75); border-color: rgba(255,255,255,.18); backdrop-filter: blur(6px); }
+.leave-game:hover { background: rgba(255,77,94,.25); border-color: var(--red); }
+#toasts { position: absolute; right: 12px; top: 52px; display: flex; flex-direction: column; gap: 6px; pointer-events: none; }
 .toast { background: rgba(10,12,16,.85); border: 1px solid rgba(255,255,255,.12); border-radius: var(--radius-sm); padding: 6px 12px; font-size: 13px; max-width: 280px; animation: slidein .2s ease-out; }
 @keyframes slidein { from { transform: translateX(20px); opacity: 0; } }
 #spectatorBar { position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100% - 24px); background: rgba(10,12,16,.88); border: 1px solid rgba(255,255,255,.15); border-radius: var(--radius); padding: 8px 12px; font-size: 13px; font-weight: 600; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: center; backdrop-filter: blur(6px); }
@@ -291,6 +296,8 @@ details .rules-grid { margin-top: 8px; }
   #hud .score { font-size: 20px; min-width: 26px; }
   #hud .clock { font-size: 16px; }
   #hudChips { top: 40px; }
+  .leave-game { top: 4px; right: 6px; padding: 3px 8px; font-size: 12px; }
+  #toasts { top: 36px; }
 }
 
 /* ---- T-27..T-29: skill meter, combo pips, chaos/wind chips, emotes ---- */
