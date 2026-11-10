@@ -169,3 +169,44 @@ test('XP is awarded to seated humans with a player card; tournament mode plays t
   assert.equal(host.last('error').code, 'tournament', 'the bracket picks the opponent');
   room.destroy();
 });
+
+test('switch player (T-51): take over the bot team-mate nearest the ball, keep earned stats', () => {
+  const { lobby, host, guest } = setup();
+  const room = lobby.createRoom(host, { name: 'Switch' });
+  lobby.joinRoom(guest, { roomId: room.id });
+  room.switchPlayer(host);                                  // not seated / not playing: ignored
+  room.pickSlot(host, 'red:FWD'); room.pickSlot(guest, 'red:MID');
+  room.startGame(host); room.stopLoop();
+  const m = room.match;
+  m.ball.x = 100; m.ball.y = 400;
+  for (const p of m.players) { p.x = 700; p.y = 400; }
+  m.player('red:DEF').x = 140;                              // nearest red bot to the ball
+  m.player('red:GK').x = 60; m.player('red:GK').y = 100;
+  m.player('red:MID').x = 101;                              // a human: never a target
+  m.player('red:FWD').stats.goals = 2;
+  room.switchPlayer(host);
+  assert.equal(room.players.get(host.id).slot, 'red:DEF');
+  assert.equal(room.slots['red:FWD'], null);
+  assert.equal(m.player('red:FWD').isBot, true);
+  assert.equal(m.player('red:DEF').isBot, false); assert.equal(m.player('red:DEF').name, 'Host');
+  assert.equal(room.players.get(host.id).statCarry.goals, 2);
+
+  // A bot team-mate on the ball wins over a closer one; spam within the cooldown is ignored.
+  room.switchPlayer(host);
+  assert.equal(room.players.get(host.id).slot, 'red:DEF');
+  room.players.get(host.id).lastSwitch = 0;
+  m.possession = { slot: 'red:FWD', team: 'red' };
+  room.switchPlayer(host);
+  assert.equal(room.players.get(host.id).slot, 'red:FWD');
+
+  // No free team-mate: an error, slot unchanged.
+  room.players.get(host.id).lastSwitch = 0;
+  const g2 = new FakeClient('g2', 'G2'), g3 = new FakeClient('g3', 'G3');
+  for (const c of [g2, g3]) { lobby.addClient(c); lobby.joinRoom(c, { roomId: room.id }); }
+  room.pickSlot(g2, 'red:DEF'); room.pickSlot(g3, 'red:GK');
+  host.clear();
+  room.switchPlayer(host);
+  assert.equal(host.last('error').code, 'no_switch');
+  assert.equal(room.players.get(host.id).slot, 'red:FWD');
+  room.destroy();
+});

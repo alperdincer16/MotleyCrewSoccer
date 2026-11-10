@@ -100,6 +100,7 @@ class Client {
       case C2S.LEAVE: if (room) { room.disconnectPlayer(this, true); this.send({ type: S2C.ROOM, room: null }); } return;
       case C2S.PICK_SLOT: return room && room.pickSlot(this, msg.slot);
       case C2S.LEAVE_SLOT: return room && room.leaveSlot(this);
+      case C2S.SWITCH: return room && room.switchPlayer(this);
       case C2S.READY: return room && room.setReady(this, msg.ready);
       case C2S.RULES: return room && room.updateRules(this, msg.rules);
       case C2S.SET_TEAM: return room && room.setTeam(this, msg.side, msg.nation);

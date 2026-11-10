@@ -15,6 +15,7 @@ const C2S = {
   LEAVE: 'leaveGame',        // {}
   PICK_SLOT: 'pickSlot',     // { slot }  slot = "red:GK" etc.
   LEAVE_SLOT: 'leaveSlot',   // {}
+  SWITCH: 'switchPlayer',    // {}  take over the best-placed bot team-mate mid-match (T-51)
   READY: 'setReady',         // { ready }
   RULES: 'updateRules',      // { rules }      (host only)
   SET_TEAM: 'setTeam',       // { side, nation } (host only)

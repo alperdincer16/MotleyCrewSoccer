@@ -320,7 +320,15 @@ details .rules-grid { margin-top: 8px; }
 .mbtns #mLob, .mbtns #mSkill { width: 64px; height: 64px; font-size: 13px; }
 .mbtns #mLob { background: rgba(6,214,160,.85); }
 .mbtns #mSkill { background: rgba(255,159,28,.9); }
-.mbtns #mEmote { width: 48px; height: 48px; background: rgba(255,255,255,.85); grid-column: 1 / -1; }
+.mbtns #mEmote { width: 48px; height: 48px; background: rgba(255,255,255,.85); }
+.mbtns #mSwitch { width: 64px; height: 48px; font-size: 11px; font-weight: 800; background: rgba(76,201,240,.9); color: #0b1320; }
+.mbtns #mSwitch:disabled { opacity: .35; }
+/* Switch player (T-51) */
+.switch-btn { position: absolute; right: 12px; bottom: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px 6px 12px; font-size: 13px; font-weight: 700; background: rgba(10,12,16,.82); color: #fff; border: 1px solid rgba(76,201,240,.6); border-radius: 12px; backdrop-filter: blur(6px); cursor: pointer; }
+.switch-btn:hover { border-color: #4cc9f0; box-shadow: 0 0 12px rgba(76,201,240,.45); }
+.switch-btn .ico { font-size: 16px; color: #4cc9f0; }
+.switch-btn kbd { margin: 0 0 0 2px; }
+@media (pointer: coarse) { .switch-btn { display: none; } }
 #emoteWheel { position: absolute; right: 16px; bottom: 190px; display: grid; grid-template-columns: repeat(2, auto); gap: 6px; pointer-events: auto; }
 #emoteWheel button { background: #fff; color: #111; font-weight: 700; }
 .rule select { padding: 4px 8px; }

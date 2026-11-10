@@ -53,6 +53,7 @@
       <div><kbd>F</kbd> or right-click: <b>lob</b> over players</div>
       <div>Sweep the mouse sideways (or run across the ball) as you kick to <b>curve</b> it</div>
       <div><kbd>E</kbd>: your nation's <b>signature move</b> when the meter is full</div>
+      <div><kbd>Tab</kbd>: <b>switch player</b> to the team-mate nearest the ball</div>
       <div>Three passes in a row: <b>combo shot</b></div>
       <div><kbd>1</kbd>–<kbd>6</kbd>: quick shouts (Pass! Shoot! Back! Nice! Sorry! Wow!)</div>
       <div><kbd>Enter</kbd>: chat</div>
@@ -222,6 +223,7 @@
       <kbd>E</kbd><span id="skillName">Signature move</span>
       <div class="bar"><div id="skillFill"></div></div>
     </div>
+    <button id="switchBtn" class="switch-btn hidden" type="button" title="Take over the team-mate best placed to play the ball"><span class="ico">⇄</span> Switch player <kbd>Tab</kbd></button>
     <div id="netInfo"></div>
     <button id="btnLeaveGame" class="ghost small leave-game" type="button" title="Leave the match (Esc)">✕ Leave</button>
     <div id="banner" class="banner hidden"></div>
@@ -240,7 +242,7 @@
       <div class="mbtns">
         <button id="mKick">KICK</button><button id="mDash">DASH</button>
         <button id="mLob">LOB</button><button id="mSkill">SKILL</button>
-        <button id="mEmote" type="button">💬</button>
+        <button id="mSwitch" type="button">⇄ SWITCH</button><button id="mEmote" type="button">💬</button>
       </div>
       <div id="emoteWheel" class="hidden"></div>
     </div>
