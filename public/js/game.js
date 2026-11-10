@@ -97,7 +97,6 @@
       if (this.highlights) this.highlights.reset();
       this.predErr = { x: 0, y: 0 };
       this.active = true;
-      if (this.renderer.crowd) this.renderer.crowd.reset();
       this.el.results.classList.add('hidden');
       this.hideBanner();
       this.setScore(0, 0); this.setClock(this.rules.matchSeconds, '');
@@ -127,7 +126,6 @@
 
     stop() {
       this.active = false;
-      this.audio.setCrowd(0);
       if (this.raf) { cancelAnimationFrame(this.raf); this.raf = null; }
       this.el.mobile.classList.add('hidden');
     }
@@ -344,7 +342,6 @@
             this.audio.kick(e.power, hot);
             if (e.lob) this.audio.lob();
             if (hot) R.kickShake(8); else if (e.slot === this.mySlot) R.kickShake(2.5 + (e.charge || 0) * 3);
-            if (R.crowd && hot) R.crowd.pulse(null, 0.3);
             if (e.combo) this.toast(`🔥 ${this.playerName(e.slot)} unleashes the combo shot!`, e.team);
             break;
           }
@@ -353,7 +350,6 @@
             R.specialFx(e.x, e.y, e.kind, this.teamColors[e.team]);
             this.audio.special(e.kind);
             R.callout(e.slot, `${sp.icon} ${sp.name.toUpperCase()}`, this.teamColors[e.team]);
-            if (R.crowd) R.crowd.pulse(e.team, 0.35);
             if (e.kind === 'shockwave') R.kickShake(10);
             break;
           }
@@ -362,27 +358,23 @@
             R.tackleFx(e, this.teamColors[e.team], ground);
             this.audio.tackle();
             if (e.slot === this.mySlot || e.victim === this.mySlot) R.kickShake(5);
-            if (R.crowd) R.crowd.pulse(e.team, 0.15);
             break;
           }
           case 'tackle':
             R.burst(e.x, e.y, { n: 14, color: '#c9a66b', speed: 160, life: 0.6 }); this.audio.tackle();
-            if (R.crowd) R.crowd.pulse(e.team, 0.2);
             break;
           case 'pass':
             this.audio.combo(e.chain, e.ready);
-            if (e.ready) { this.toast(`🔥 ${e.chain}-pass combo! ${this.nationName(e.team)}'s next shot is powered up`, e.team); if (R.crowd) R.crowd.pulse(e.team, 0.3); }
+            if (e.ready) { this.toast(`🔥 ${e.chain}-pass combo! ${this.nationName(e.team)}'s next shot is powered up`, e.team); }
             break;
           case 'comboBroken': this.audio.comboBreak(); break;
           case 'save':
             this.toast(`🧤 Great save by ${this.playerName(e.slot)}!`, e.team); this.audio.save();
-            if (R.crowd) { R.crowd.gasp(); R.crowd.pulse(e.team, 0.4); }
             break;
           case 'chaos': {
             const c = MCS.CHAOS[e.kind];
             this.showEvent(c.icon, c.label, c.desc, 'chaos', 2600);
             this.audio.chaos();
-            if (R.crowd) R.crowd.pulse(null, 0.45);
             break;
           }
           case 'chaosEnd': this.toast(`${MCS.CHAOS[e.kind].label} is over`); break;
@@ -392,18 +384,17 @@
           case 'emote': this.showEmote(e.slot, e.id); break;
           case 'bounce':
             R.burst(e.x, e.y, { n: 4, color: 'rgba(255,255,255,.6)', speed: 60 }); this.audio.bounce(e.speed, e.post);
-            if (e.post) { R.kickShake(3); if (R.crowd) R.crowd.gasp(); if (e.speed > 350) this.audio.gasp(); }
+            if (e.post) R.kickShake(3);
             break;
           case 'dash': R.burst(e.x, e.y, { n: 8, color: 'rgba(255,255,255,.5)', speed: 90 }); this.audio.dash(); break;
           case 'whistle': this.audio.whistle(false); if (!snap.sd) this.hideBanner(); this.replay = null; break;
           case 'kickoffOpen': this.toast('Kick-off opened: anyone can play the ball'); break;
-          case 'suddenDeath': this.showBanner('SUDDEN DEATH', 'Next goal wins', 'gold', 2500); this.audio.whistle(false); if (R.crowd) R.crowd.pulse(null, 0.5); break;
+          case 'suddenDeath': this.showBanner('SUDDEN DEATH', 'Next goal wins', 'gold', 2500); this.audio.whistle(false); break;
           case 'spawn': R.burst(e.x, e.y, { n: 12, color: MCS.BOOSTS[e.boost].color, speed: 100 }); break;
           case 'pickup': {
             const b = MCS.BOOSTS[e.boost];
             R.burst(e.x, e.y, { n: 24, color: b.color, speed: 220, life: 0.7 });
             this.audio.pickup(); if (e.boost === 'freeze') this.audio.freeze();
-            if (R.crowd) R.crowd.pulse(e.team, 0.25);
             if (e.slot === this.mySlot) this.showEvent(b.icon, b.label, b.desc, 'boost', 2200, b.color);
             else this.toast(`${b.icon} ${this.playerName(e.slot)} got ${b.label}`, e.team);
             break;
@@ -412,8 +403,6 @@
             const color = this.teamColors ? this.teamColors[e.team] : (e.team === 'red' ? Renderer.COLORS.red : Renderer.COLORS.blue);
             R.confetti(e.x, e.y, color); R.kickShake(18);
             this.audio.goal(myTeam ? e.team === myTeam : true);
-            this.audio.cheer(e.ownGoal ? 0.7 : 1);
-            if (R.crowd) R.crowd.goal(e.team, e.ownGoal);
             const who = e.scorer ? this.playerName(e.scorer) : 'Nobody';
             let sub = e.ownGoal ? `Own goal by ${who}` : `${who}${e.assist ? ' · assist ' + this.playerName(e.assist) : ''}`;
             if (e.speed > 850) sub += ' · ROCKET!';
@@ -426,7 +415,7 @@
             if (this.highlights) this.highlights.capture(e, now);
             break;
           }
-          case 'end': this.audio.end(); this.replay = null; if (R.crowd) R.crowd.end(e.winner); this.audio.cheer(e.winner === 'draw' ? 0.5 : 0.9); break;
+          case 'end': this.audio.end(); this.replay = null; break;
         }
       }
     }
@@ -488,8 +477,6 @@
       this.el.clockTag.textContent = tag;
       const urgent = snap && !snap.sd && seconds <= 10 && seconds > 0 && snap.state !== 'countdown';
       this.el.clock.classList.toggle('urgent', !!urgent);
-      if (this.renderer.crowd) this.renderer.crowd.setClapping(!!urgent);
-      if (urgent && s !== this._lastClockSecond) this.audio.clap();
       if (urgent && s !== this._lastClockSecond && s <= 5) this.audio.tick();
       this._lastClockSecond = s;
     }
@@ -550,7 +537,7 @@
           trophy.classList.remove('hidden');
           document.getElementById('trophyText').textContent = `${home} are champions!`;
           this.renderer.confetti(FIELD.width / 2, FIELD.height / 2, this.teamColors.red);
-          this.audio.cheer(1); this.audio.levelUp();
+          this.audio.levelUp();
         }
         this.el.btnRematch.textContent = tr.won && next ? 'Next round' : 'Back to the room';
       } else this.el.btnRematch.textContent = 'Rematch';
@@ -754,7 +741,6 @@
         else if (t >= 0) celebration = Object.assign({}, this.celebration, { t });
       }
       this.renderer.draw(view, { mySlot: this.mySlot, dt, replay: !!(view && view._replay), celebration });
-      if (this.renderer.crowd) this.audio.setCrowd(this.renderer.crowd.level());
       if (this.el.netInfo && (now - (this._netInfoAt || 0)) > 500) {
         this._netInfoAt = now;
         this.el.netInfo.textContent = `${this.net.pingMs} ms · ${Math.round(this.interp.delay)} ms buffer`;

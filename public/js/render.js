@@ -48,7 +48,6 @@
       this.canvas = canvas;
       canvas.width = W + 2 * M; canvas.height = H + 2 * M;
       this.ctx = canvas.getContext('2d');
-      this.crowd = window.Crowd ? new Crowd() : null;
       this.teamNames = { red: 'RED', blue: 'BLUE' };
       this.particles = [];
       this.shake = 0;
@@ -76,7 +75,7 @@
     }
 
     setArena(a) { if (a !== this.arena) { this.arena = a || 'classic'; this.pitchCache = null; } }
-    setVenue(v) { v = VENUE_LOOK[v] ? v : 'national'; if (this.crowd) this.crowd.setVenue(v); if (v !== this.venue) { this.venue = v; this.pitchCache = null; } }
+    setVenue(v) { v = VENUE_LOOK[v] ? v : 'national'; if (v !== this.venue) { this.venue = v; this.pitchCache = null; } }
     setWeather(w) { w = w || 'clear'; if (w !== this.weather) { this.weather = w; this.pitchCache = null; this.drops = []; this.nightLayer = null; } }
     setWind(x, y) { this.wind.x = x; this.wind.y = y; }
     callout(id, text, color) { this.callouts.set(id, { text, color, t: 1.6 }); }
@@ -122,7 +121,6 @@
     setTeams(kits, colors, names) {
       this.kits = kits; this.teamColors = colors; this.pitchCache = null;
       if (names) this.teamNames = names;
-      if (this.crowd) this.crowd.setColors(colors, kits, this.teamNames);
     }
 
     // ---- Particles ---------------------------------------------------------
@@ -397,7 +395,6 @@
       const sx = (Math.random() - 0.5) * this.shake, sy = (Math.random() - 0.5) * this.shake;
       ctx.drawImage(this.pitchCache, sx, sy);
       ctx.translate(M + sx, M + sy);
-      if (this.crowd) { this.crowd.update(dt, view); this.crowd.draw(ctx); }
       if (!view) return;
 
       // Kickoff: dim the half the non-kicking team may not enter.

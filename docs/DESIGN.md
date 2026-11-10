@@ -194,31 +194,12 @@ defender holds), `gkRush` (how far and how fast a ball the keeper will come
 for), `dash` (how often bots dash into duels) and `flair` (shot placement
 variance).
 
-## Stadium and crowd
+## Stadium
 
-The arena sits inside four stands of pixel fans (about 900 seats across
-three rows per side, each fan a 10×14 pixel figure with a face) behind
-advertising hoardings that carry the fixture.
-Fans behind each goal support that side; the long stands are split home
-end left and away end right with neutrals mixed in. Every fan has a seat,
-a shirt colour derived from the nation's colour, a skin tone and a phase.
-
-The crowd is driven by a per-side excitement value:
-
-* Tension rises as the ball gets closer to a goal and faster toward it. The
-  attacking side's fans anticipate more than the defending side's fans fret.
-* A goal makes the scorers' fans leap with arms up and wave flags for about
-  four seconds while the conceding end goes silent and slumps.
-* Hitting the post makes the whole ground flinch (a gasp).
-* Pickups and rocket kicks send a ripple through the collector's fans.
-* The final ten seconds switch everyone to unison clapping on the beat.
-* At full time the winners' fans celebrate and the losers sit.
-* When nothing happens for nine seconds a Mexican wave travels once around
-  the ground.
-
-Audio follows the same excitement value: a looping pink-noise murmur whose
-level and brightness track the crowd, a roar on goals and at full time, an
-"ooh" on the post, and claps on each of the last ten seconds.
+The arena sits inside empty terraced stands (three stepped tiers coloured by
+location) behind advertising hoardings that carry the fixture. There is no
+crowd: no fans are drawn and there is no crowd audio (murmur, roars, gasps or
+claps). The crowd from T-26/T-47 was removed in T-48.
 
 ## Shooting, signature moves and combos (T-27)
 
