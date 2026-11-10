@@ -13,8 +13,6 @@ seat a human doesn't take.
   long, Italy parks the bus). Pick both sides when creating a game or in the
   pre-match room; clashing kits switch
   to the alternate automatically.
-* **Stadium crowd**: hundreds of pixel fans who cheer, gasp, clap, slump and
-  start a Mexican wave depending on what is happening on the pitch.
 * **Signature moves**: every nation has one (Brazil's Banana Shot,
   England's thunderbolt, Italy's sliding tackle, Spain's laser pass,
   France's glued-ball sprint, Belgium's shockwave...). Fill the meter by
