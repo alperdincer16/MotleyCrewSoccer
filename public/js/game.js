@@ -75,6 +75,7 @@
         skill: document.getElementById('skillMeter'), skillName: document.getElementById('skillName'), skillFill: document.getElementById('skillFill'),
         comboRed: document.getElementById('comboRed'), comboBlue: document.getElementById('comboBlue'),
         chaos: document.getElementById('chaosChip'), wind: document.getElementById('windChip'),
+        eventCard: document.getElementById('eventCard'),
       };
       this.bannerTimer = null;
       this._lastClockSecond = -1;
@@ -87,9 +88,11 @@
       this.setSides(sides || (this.room && this.room.sides));
       this.renderer.setGoalWidth(this.rules.goalWidth);
       this.renderer.setArena(this.rules.arena);
+      this.renderer.setWeather(this.rules.weather);
+      this.renderer.setVenue(this.rules.venue);
       this.renderer.rules = this.rules;
       this.renderer.particles = [];
-      this.el.chaos.classList.add('hidden'); this.el.wind.classList.add('hidden');
+      this.el.chaos.classList.add('hidden'); this.el.wind.classList.add('hidden'); this.el.eventCard.className = 'event-card hidden'; clearTimeout(this.eventTimer);
       this.snaps = []; this.inputHistory = []; this.replay = null; this.lastPred = null; this.clock.offset = null;
       if (this.highlights) this.highlights.reset();
       this.predErr = { x: 0, y: 0 };
@@ -185,7 +188,7 @@
       else this.clock.offset += 0.25;   // creep upward so a worsening link is re-learned
 
       this.snaps.push({ recv: now, data: snap });
-      if (this.snaps.length > 150) this.snaps.shift();
+      if (this.snaps.length > 300) this.snaps.shift();   // ~10 s of history, enough for the goal replay
       this.handleEvents(snap, now);
       this.setScore(snap.score.red, snap.score.blue);
       let tag = '';
@@ -306,12 +309,18 @@
     }
 
     // ---- Instant replay -----------------------------------------------------
+    /**
+     * Goal replay (T-45): up to the last 4 s of build-up, at about real speed,
+     * after a short hold on the goal frame. It ends about a second before the
+     * restart whistle, so the live view settles before kick-off.
+     */
     startReplay(now) {
-      const span = 1400;
+      const HOLD = 350, GAP = 1000;
+      const duration = Math.max(1200, Math.min(4500, this.rules.kickoffPause * 1000 - HOLD - GAP));
+      const span = Math.min(4000, duration);
       const snaps = this.snaps.filter(s => s.recv >= now - span);
       if (snaps.length < 4) return;
-      const duration = Math.max(1200, Math.min(3000, this.rules.kickoffPause * 1000 * 0.85));
-      this.replay = { snaps, start: now + 350, duration, span: snaps[snaps.length - 1].recv - snaps[0].recv, first: snaps[0].recv };
+      this.replay = { snaps, start: now + HOLD, duration, span: snaps[snaps.length - 1].recv - snaps[0].recv, first: snaps[0].recv };
     }
     replayView(now) {
       const r = this.replay;
@@ -371,7 +380,7 @@
             break;
           case 'chaos': {
             const c = MCS.CHAOS[e.kind];
-            this.showBanner(`${c.icon} ${c.label.toUpperCase()}`, c.desc, 'gold', 2200);
+            this.showEvent(c.icon, c.label, c.desc, 'chaos', 2600);
             this.audio.chaos();
             if (R.crowd) R.crowd.pulse(null, 0.45);
             break;
@@ -395,7 +404,8 @@
             R.burst(e.x, e.y, { n: 24, color: b.color, speed: 220, life: 0.7 });
             this.audio.pickup(); if (e.boost === 'freeze') this.audio.freeze();
             if (R.crowd) R.crowd.pulse(e.team, 0.25);
-            this.toast(`${b.icon} ${this.playerName(e.slot)} got ${b.label}`, e.team);
+            if (e.slot === this.mySlot) this.showEvent(b.icon, b.label, b.desc, 'boost', 2200, b.color);
+            else this.toast(`${b.icon} ${this.playerName(e.slot)} got ${b.label}`, e.team);
             break;
           }
           case 'goal': {
@@ -429,7 +439,7 @@
         slot, team, pos, name, look, kit: this.kits ? this.kits[team] : null,
         color: this.teamColors ? this.teamColors[team] : '#ffd166', nation: this.nationName(team),
         kind: Sprites.celebrationFor(name, look), start: now + 300,
-        duration: Math.max(1.6, this.rules.kickoffPause - 0.2),
+        duration: Math.max(1.6, Math.min(4.2, this.rules.kickoffPause - 1.2)),
       };
       this.audio.celebrate();
     }
@@ -492,6 +502,28 @@
       if (ms) this.bannerTimer = setTimeout(() => this.hideBanner(), ms);
     }
     hideBanner() { this.el.banner.classList.add('hidden'); }
+    /**
+     * Compact announcement card under the scoreboard for chaos events and your
+     * own boost pickups: icon, title, one line of detail and a draining timer
+     * bar. Replaces the full-width banner these used to take. (T-44, Sam Okafor)
+     */
+    showEvent(icon, title, sub, kind, ms, color) {
+      const c = this.el.eventCard;
+      c.className = 'event-card ' + (kind || '');
+      c.style.setProperty('--event-color', color || '');
+      c.style.setProperty('--event-ms', ms + 'ms');
+      c.innerHTML = '';
+      const ic = document.createElement('span'); ic.className = 'ev-icon'; ic.textContent = icon;
+      const tx = document.createElement('span'); tx.className = 'ev-text';
+      const t = document.createElement('b'); t.textContent = title; tx.appendChild(t);
+      if (sub) { const s = document.createElement('small'); s.textContent = sub; tx.appendChild(s); }
+      const bar = document.createElement('span'); bar.className = 'ev-timer';
+      c.append(ic, tx, bar);
+      void c.offsetWidth; // restart the entry animation when cards arrive back to back
+      c.classList.add('show');
+      clearTimeout(this.eventTimer);
+      this.eventTimer = setTimeout(() => { c.classList.remove('show'); c.classList.add('leaving'); this.eventTimer = setTimeout(() => c.classList.add('hidden'), 260); }, ms);
+    }
     toast(text, team) {
       const t = document.createElement('div'); t.className = 'toast'; t.textContent = text;
       if (team) t.style.borderColor = team === 'red' ? 'var(--teamRed)' : 'var(--teamBlue)';
@@ -669,7 +701,7 @@
         left: !!(k.KeyA || k.ArrowLeft) || this.touch.dx < -0.3,
         right: !!(k.KeyD || k.ArrowRight) || this.touch.dx > 0.3,
         kick: !!(k.Space || k.KeyX) || this.mouse.down || this.touch.kick || this.latch.kick,
-        dash: !!(k.ShiftLeft || k.ShiftRight || k.KeyC) || this.touch.dash,
+        dash: !!(k.KeyC || k.ShiftLeft || k.ShiftRight) || this.touch.dash,   // C is the sprint / tackle key; Shift still works
         lob: !!k.KeyF || this.mouse.right || this.touch.lob || this.latch.lob,
         skill: !!(k.KeyE || k.KeyQ) || this.touch.skill || this.latch.skill,
         aimX: this.mouse.x, aimY: this.mouse.y,

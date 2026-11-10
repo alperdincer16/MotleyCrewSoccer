@@ -75,7 +75,23 @@
   };
 
   /** Arena feel multipliers for the current rules. */
-  function arenaOf(rules) { return (MCS.ARENAS && MCS.ARENAS[rules && rules.arena]) || MCS.ARENAS.classic; }
+  /**
+   * The pitch feel for a location plus its weather (T-45). Cached per pair so
+   * the per-tick player code allocates nothing.
+   */
+  const feelCache = new Map();
+  function arenaOf(rules) {
+    const a = (MCS.ARENAS && MCS.ARENAS[rules && rules.arena]) || MCS.ARENAS.classic;
+    const w = (MCS.WEATHER && MCS.WEATHER[rules && rules.weather]) || null;
+    if (!w) return a;
+    const key = (rules.arena || 'classic') + '|' + rules.weather;
+    let f = feelCache.get(key);
+    if (!f) {
+      f = Object.assign({}, a, { accel: a.accel * w.accel, speed: a.speed * w.speed, ballDrag: a.ballDrag + w.ballDrag, ballBounce: a.ballBounce * w.ballBounce });
+      feelCache.set(key, f);
+    }
+    return f;
+  }
   /** Effective per-1/60 s ball drag on the ground for these rules. */
   function ballDragFor(rules) { return Math.min(0.9995, Math.max(0.9, rules.ballDrag + arenaOf(rules).ballDrag)); }
 

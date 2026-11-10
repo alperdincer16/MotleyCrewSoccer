@@ -759,7 +759,7 @@ class Match {
 
   updateWind(dt) {
     const w = this.wind;
-    if (this.rules.arena !== 'wind') { w.x = 0; w.y = 0; return; }
+    if (this.rules.weather !== 'wind') { w.x = 0; w.y = 0; return; }
     w.timer -= dt;
     if (w.timer <= 0) {
       const a = Math.random() * Math.PI * 2, f = rnd(70, 190);

@@ -161,6 +161,31 @@ test('wind pushes the ball in the windy arena', () => {
   assert.ok(m.ball.x > 640, `drifted to ${m.ball.x}`);
 });
 
+// T-45 (Rosa Vidal): weather is chosen separately from the location.
+test('weather: wind is weather now, old "wind" arenas map to it, snow slows players, rain skids the ball', () => {
+  const legacy = MCS.sanitizeRules({ arena: 'wind' });
+  assert.equal(legacy.arena, 'classic'); assert.equal(legacy.weather, 'wind');
+  assert.equal(MCS.sanitizeRules({ weather: 'hail' }).weather, 'clear', 'unknown weather is ignored');
+  assert.equal(MCS.sanitizeRules({ venue: 'seaside' }).venue, 'seaside');
+  assert.equal(MCS.sanitizeRules({ venue: 'moon' }).venue, 'national', 'unknown locations are ignored');
+  const m = inPlay({ arena: 'mud', weather: 'wind' });
+  for (const p of m.players) { p.x = 50; p.y = 50; }
+  m.ball.x = 600; m.ball.y = 350;
+  m.wind = { x: 150, y: 0, tx: 150, ty: 0, timer: 99 };
+  stepN(m, 60);
+  assert.ok(m.ball.x > 620, `wind works on any location, drifted to ${m.ball.x}`);
+  const top = (weather) => {
+    const rules = MCS.sanitizeRules({ weather });
+    const p = { x: 300, y: 300, vx: 0, vy: 0, r: 20, dashCooldown: 0, dashTime: 0 };
+    for (let i = 0; i < 60; i++) Physics.integratePlayer(p, { right: true }, rules, DT, {}, null, null);
+    return p.vx;
+  };
+  assert.ok(top('snow') < top('clear'), 'snow is slower');
+  assert.equal(top('night'), top('clear'), 'night only changes the look');
+  const clear = MCS.sanitizeRules({}), rain = MCS.sanitizeRules({ weather: 'rain' });
+  assert.ok(Physics.ballDragFor(rain) > Physics.ballDragFor(clear), 'the ball skids on in the rain');
+});
+
 test('chaos events: tiny goals shrink the mouth, golden window doubles goals, they expire', () => {
   const m = inPlay({ chaosEvents: true, chaosEvery: 15 });
   m.startChaos('tinyGoals');

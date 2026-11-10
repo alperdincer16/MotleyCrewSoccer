@@ -48,7 +48,7 @@
     <div class="keys">
       <div><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows: move</div>
       <div><kbd>Space</kbd> or click: kick (aim with the mouse)</div>
-      <div><kbd>Shift</kbd>: dash</div>
+      <div><kbd>C</kbd> or <kbd>Shift</kbd>: <b>sprint</b>; sprint into the ball carrier to <b>tackle</b></div>
       <div>Hold kick to <b>charge</b> a harder shot</div>
       <div><kbd>F</kbd> or right-click: <b>lob</b> over players</div>
       <div>Sweep the mouse sideways (or run across the ball) as you kick to <b>curve</b> it</div>
@@ -70,6 +70,12 @@
       <label class="mode-opt"><input type="radio" name="mode" value="match" checked><span><b>⚽ Single match</b><small>One game, rematch as often as you like.</small></span></label>
       <label class="mode-opt"><input type="radio" name="mode" value="tournament"><span><b>🏆 Tournament</b><small>8-nation knockout. You play your nation's games; the rest are simulated.</small></span></label>
     </div>
+    <div class="venue-pick">
+      <div class="section-head"><h3>Location</h3></div>
+      <div id="createLocation" class="choice-row"></div>
+      <div class="section-head"><h3>Weather</h3></div>
+      <div id="createWeather" class="choice-row"></div>
+    </div>
     <div class="create-teams">
       <div class="section-head"><h3>Teams</h3><button type="button" class="ghost small" id="createShuffle">Shuffle</button></div>
       <div class="create-sides">
@@ -79,10 +85,21 @@
       </div>
       <div class="muted small-note">You can still change teams in the pre-match room.</div>
     </div>
-    <details>
-      <summary>Rules &amp; boosts</summary>
-      <div id="createRules" class="rules-grid"></div>
-    </details>
+    <div class="rule-sections">
+      <details>
+        <summary>Rules</summary>
+        <div id="createRules" class="rules-grid"></div>
+      </details>
+      <details>
+        <summary>Boosts <span class="muted" id="createBoostCount"></span></summary>
+        <div id="createBoostRules" class="rules-grid"></div>
+        <div id="createBoosts" class="boost-grid"></div>
+      </details>
+      <details>
+        <summary>Advanced <span class="muted">special pitches, physics, timings</span></summary>
+        <div id="createRulesAdv" class="rules-grid"></div>
+      </details>
+    </div>
     <div class="row end">
       <button type="button" class="ghost" id="createCancel">Cancel</button>
       <button type="submit" class="primary">Create</button>
@@ -172,12 +189,22 @@
     </section>
     </div>
 
+    <div class="prematch-main">
     <section class="card">
       <div class="section-head"><h2>Rules</h2><span class="muted" id="rulesHint">Host can edit</span></div>
       <div id="roomRules" class="rules-grid"></div>
-      <h3>Boosts in the pool</h3>
+      <details class="advanced">
+        <summary>Advanced <span class="muted">special pitches, physics, timings</span></summary>
+        <div id="roomRulesAdv" class="rules-grid"></div>
+      </details>
+    </section>
+
+    <section class="card">
+      <div class="section-head"><h2>Boosts</h2><span class="muted" id="boostHint"></span></div>
+      <div id="roomBoostRules" class="rules-grid"></div>
       <div id="roomBoosts" class="boost-grid"></div>
     </section>
+    </div>
   </div>
 </main>
 
@@ -197,6 +224,7 @@
     </div>
     <div id="netInfo"></div>
     <div id="banner" class="banner hidden"></div>
+    <div id="eventCard" class="event-card hidden" aria-live="polite"></div>
     <div id="toasts"></div>
     <div id="spectatorBar" class="hidden">
       You are spectating. Take over a bot:
