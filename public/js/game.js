@@ -72,6 +72,7 @@
         chatForm: document.getElementById('chatFormGame'), chatInput: document.getElementById('chatInputGame'),
         mobile: document.getElementById('mobileControls'), netInfo: document.getElementById('netInfo'),
         hud: document.getElementById('hud'),
+        switchBtn: document.getElementById('switchBtn'), mSwitch: document.getElementById('mSwitch'),
         skill: document.getElementById('skillMeter'), skillName: document.getElementById('skillName'), skillFill: document.getElementById('skillFill'),
         comboRed: document.getElementById('comboRed'), comboBlue: document.getElementById('comboBlue'),
         chaos: document.getElementById('chaosChip'), wind: document.getElementById('windChip'),
@@ -135,7 +136,13 @@
       this.room = room;
       const me = room && room.players.find(p => p.id === this.net.id);
       const newSlot = me ? me.slot : null;
-      if (newSlot !== this.mySlot) { this.lastPred = null; this.predErr = { x: 0, y: 0 }; this.inputHistory = []; }
+      if (newSlot !== this.mySlot) {
+        this.lastPred = null; this.predErr = { x: 0, y: 0 }; this.inputHistory = [];
+        // Switched to a team-mate mid-match (T-51): say who you are now.
+        if (newSlot && this.mySlot && room.status === 'playing' && newSlot.split(':')[0] === this.mySlot.split(':')[0]) {
+          this.toast(`⇄ You now control the ${({ GK: 'goalkeeper', DEF: 'defender', MID: 'midfielder', FWD: 'forward' })[MCS.parseSlot(newSlot).pos] || MCS.parseSlot(newSlot).pos}`, newSlot.split(':')[0]);
+        }
+      }
       this.mySlot = newSlot;
       // Cosmetics of the humans in each slot (bots use their name-derived look).
       this.looks = {};
@@ -143,10 +150,28 @@
       this.renderer.looks = this.looks;
       if (this.sides) this.updateSkillLabel();
       this.updateSpectatorBar();
+      this.updateSwitchButton();
       if (room && room.status === 'ended') {
         this.el.btnRematch.disabled = room.hostId !== this.net.id;
         this.el.rematchHint.textContent = room.hostId === this.net.id ? '' : 'Waiting for the host to start a rematch…';
       }
+    }
+
+    /** Switch-player button (T-51): shown while you play and a bot team-mate is free. */
+    updateSwitchButton() {
+      const btn = this.el.switchBtn, mbtn = this.el.mSwitch;
+      const team = this.mySlot ? this.mySlot.split(':')[0] : null;
+      const free = !!(team && this.room && this.room.status === 'playing'
+        && Object.entries(this.room.slots).some(([slot, pid]) => !pid && slot.split(':')[0] === team));
+      btn.classList.toggle('hidden', !free);
+      mbtn.disabled = !free;
+    }
+    switchPlayer() {
+      if (!this.mySlot) return;
+      const now = performance.now();
+      if (now - (this._lastSwitch || 0) < 250) return;
+      this._lastSwitch = now;
+      this.net.send('switchPlayer', {});
     }
 
     updateSpectatorBar() {
@@ -577,6 +602,7 @@
         if (e.key === 'm' || e.key === 'M') { const m = this.audio.toggleMute(); this.toast(m ? 'Sound off' : 'Sound on'); }
         const emote = MCS.EMOTES.find(em => em.key === e.key);
         if (emote && !e.repeat) { this.sendEmote(emote.id); return; }
+        if (e.key === 'Tab') { e.preventDefault(); if (!e.repeat) this.switchPlayer(); return; }
         if (e.key === 'p' || e.key === 'P') { this.predictionEnabled = !this.predictionEnabled; localStorage.setItem('mcs.predict', this.predictionEnabled ? '1' : '0'); this.toast(`Prediction ${this.predictionEnabled ? 'on' : 'off'}`); }
         if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' ', 'Shift'].includes(e.key)) e.preventDefault();
         this.keys[e.code] = true;
@@ -604,6 +630,8 @@
         if (text) this.net.send('chat', { text });
         this.el.chatInput.value = ''; this.el.chatForm.classList.add('hidden'); this.el.chatInput.blur();
       });
+      this.el.switchBtn.addEventListener('click', (e) => { e.currentTarget.blur(); this.switchPlayer(); });
+      this.el.mSwitch.addEventListener('click', () => this.switchPlayer());
       this.bindTouch();
     }
     toWorld(e) {

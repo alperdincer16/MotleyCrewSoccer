@@ -18,6 +18,7 @@ const { Tournament } = require('./tournament');
 const TICK_DT = 1 / MCS.TICK_RATE;
 const SNAP_EVERY = Math.round(MCS.TICK_RATE / MCS.SNAPSHOT_RATE);
 const DISCONNECT_GRACE_MS = 15000;
+const SWITCH_COOLDOWN_MS = 250;   // switch-player presses closer than this are ignored (T-51)
 
 let nextRoomId = 1;
 
@@ -160,7 +161,7 @@ class Room {
     if (!p || !MCS.parseSlot(slotId)) return this.error(client, 'bad_slot', 'Unknown slot');
     if (this.slots[slotId] && this.slots[slotId] !== client.id) return this.error(client, 'slot_taken', 'That slot is taken');
     if (this.status === 'ended') return this.error(client, 'match_over', 'Wait for the rematch');
-    if (p.slot) { this.slots[p.slot] = null; if (this.match) this.match.setBot(p.slot); }
+    if (p.slot) { this.bankStats(p); this.slots[p.slot] = null; if (this.match) this.match.setBot(p.slot); }
     p.slot = slotId; this.slots[slotId] = client.id; p.ready = false;
     if (this.match) {
       this.match.setHuman(slotId, p.name, p.look);
@@ -171,9 +172,50 @@ class Room {
     this.lobby.broadcastLobby();
   }
 
+  /**
+   * Switch player (T-51): hand your current player to a bot and take over the
+   * bot team-mate best placed to play the ball (whoever has it, else the one
+   * nearest to it). Only free (bot) slots on your own team are candidates.
+   */
+  switchPlayer(client) {
+    const p = this.players.get(client.id);
+    if (!p || !p.slot || !this.match || this.status !== 'playing') return;
+    const now = Date.now();
+    if (p.lastSwitch && now - p.lastSwitch < SWITCH_COOLDOWN_MS) return;
+    const target = this.switchTarget(p.slot);
+    if (!target) return this.error(client, 'no_switch', 'No free team-mate to switch to');
+    p.lastSwitch = now;
+    this.pickSlot(client, target);
+  }
+
+  /** The bot team-mate a switch from `slotId` lands on, or null. */
+  switchTarget(slotId) {
+    const m = this.match, me = m.player(slotId);
+    if (!me) return null;
+    const ball = m.ball;
+    const owner = m.possession && m.possession.team === me.team ? m.possession.slot : null;
+    let best = null, bestD = Infinity;
+    for (const q of m.players) {
+      if (q.team !== me.team || q.id === slotId || this.slots[q.id]) continue;
+      const d = q.id === owner ? -1 : Math.hypot(q.x - ball.x, q.y - ball.y);
+      if (d < bestD) { bestD = d; best = q.id; }
+    }
+    return best;
+  }
+
+  /** Keep the stats you earned in a slot you leave mid-match, for XP. */
+  bankStats(p) {
+    if (!this.match || !p.slot) return;
+    const cur = this.match.player(p.slot);
+    if (!cur) return;
+    p.statCarry = p.statCarry || {};
+    for (const [k, v] of Object.entries(cur.stats)) p.statCarry[k] = (p.statCarry[k] || 0) + Math.max(0, v - ((p.statBase && p.statBase[k]) || 0));
+  }
+
   leaveSlot(client) {
     const p = this.players.get(client.id);
     if (!p || !p.slot) return;
+    this.bankStats(p);
     this.slots[p.slot] = null;
     if (this.match) this.match.setBot(p.slot);
     p.slot = null; p.ready = false;
@@ -259,7 +301,7 @@ class Room {
     this.brains = this.match.players.map(p => new BotBrain(p.id, p.pos === 'GK' ? 0.85 : 1)); // botSkill rule scales these at runtime
     this.status = 'playing';
     this.lastResult = null;
-    for (const p of this.players.values()) { p.ready = false; p.statBase = null; }
+    for (const p of this.players.values()) { p.ready = false; p.statBase = null; p.statCarry = null; }
     this.broadcast({ type: S2C.MATCH_START, rules: this.match.rules, sides: this.sides, roomId: this.id });
     this.broadcastRoom();
     this.lobby.broadcastLobby();
@@ -338,7 +380,7 @@ class Room {
       const mine = stats.find(s => s.id === p.slot);
       if (!mine) continue;
       const delta = {};
-      for (const [k, v] of Object.entries(mine.stats)) delta[k] = Math.max(0, v - ((p.statBase && p.statBase[k]) || 0));
+      for (const [k, v] of Object.entries(mine.stats)) delta[k] = Math.max(0, v - ((p.statBase && p.statBase[k]) || 0)) + ((p.statCarry && p.statCarry[k]) || 0);
       const team = MCS.parseSlot(p.slot).team;
       const result = m.winner === 'draw' ? 'draw' : m.winner === team ? 'win' : 'loss';
       const extra = Object.assign({ mvp: best && best.id === p.slot && Progress.matchRating(best.stats) > 0 }, extraFor ? extraFor(team) : {});
