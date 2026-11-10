@@ -13,8 +13,8 @@
 
   // ---- Arena geometry (world units) ---------------------------------------
   const FIELD = {
-    width: 1200,
-    height: 700,
+    width: 1400,         // T-49: was 1200×700, enlarged ~17% for more room in 4v4
+    height: 820,
     margin: 122,         // space around the arena for goal pockets, hoardings and the stands
     goalDepth: 50,       // how deep the goal pocket is behind the goal line
     cornerRadius: 50,    // rounded arena corners (they curl the ball a little)
