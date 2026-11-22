@@ -210,3 +210,52 @@ test('switch player (T-51): take over the bot team-mate nearest the ball, keep e
   assert.equal(room.players.get(host.id).slot, 'red:FWD');
   room.destroy();
 });
+
+test('auto switch (T-52): control follows the team-mate who gets the ball, never a human\'s player', () => {
+  const { lobby, host, guest } = setup();
+  const room = lobby.createRoom(host, { name: 'Auto' });
+  lobby.joinRoom(guest, { roomId: room.id });
+  room.pickSlot(host, 'red:FWD'); room.pickSlot(guest, 'red:DEF');
+  room.startGame(host); room.stopLoop();
+  const m = room.match;
+  for (const p of m.players) { p.x = 700; p.y = 400; }
+  m.player('red:FWD').x = 600; m.player('red:DEF').x = 200;
+  const seat = (c) => room.players.get(c.id).slot;
+
+  // Host passes from FWD to the MID bot: the passer follows the pass, not the closer guest.
+  m.possession = { slot: 'red:FWD', team: 'red', since: 1, lastTick: 1 };
+  room.autoSwitch();
+  assert.equal(seat(host), 'red:FWD', 'a human already on the ball: nothing changes');
+  m.player('red:MID').x = 210;
+  m.possession = { slot: 'red:MID', team: 'red', since: 2, lastTick: 2 };
+  room.autoSwitch();
+  assert.equal(seat(host), 'red:MID');
+  assert.equal(seat(guest), 'red:DEF', 'the other human keeps their player');
+  assert.equal(m.player('red:FWD').isBot, true);
+  assert.equal(room.state().players.find(p => p.id === host.id).auto, true);
+  room.autoSwitch();                                       // same possession: no repeat
+  assert.equal(seat(host), 'red:MID');
+
+  // Opponents win it, then a red bot wins it back: the nearest red human takes over.
+  m.possession = { slot: 'blue:MID', team: 'blue', since: 3, lastTick: 3 };
+  room.autoSwitch();
+  assert.equal(seat(host), 'red:MID'); assert.equal(seat(guest), 'red:DEF');
+  m.player('red:GK').x = 190;                              // closer to the guest (DEF at 200) than the host (MID at 210)
+  m.player('red:MID').x = 400;
+  m.possession = { slot: 'red:GK', team: 'red', since: 4, lastTick: 4 };
+  room.autoSwitch();
+  assert.equal(seat(guest), 'red:GK');
+  assert.equal(seat(host), 'red:MID');
+
+  // The ball reaching a team-mate controlled by the other human never moves anyone.
+  m.possession = { slot: 'red:MID', team: 'red', since: 5, lastTick: 5 };
+  room.autoSwitch();
+  assert.equal(seat(host), 'red:MID'); assert.equal(seat(guest), 'red:GK');
+
+  // Manual switch still works afterwards.
+  room.players.get(host.id).lastSwitch = 0;
+  room.switchPlayer(host);
+  assert.notEqual(seat(host), 'red:MID');
+  assert.equal(room.state().players.find(p => p.id === host.id).auto, false);
+  room.destroy();
+});
