@@ -416,11 +416,14 @@
       const sorted = view.players.slice().sort((a, b) => a.y - b.y);
       // A low ball is drawn among the players by depth; a high ball above them all.
       let ballDrawn = false;
+      this.aimGuide = opts.aim || null;
       for (const p of sorted) {
         if (!ballDrawn && bz < 18 && view.ball.y < p.y) { this.drawBall(view.ball, dt); ballDrawn = true; }
         this.drawPlayer(p, p.id === opts.mySlot);
       }
       if (!ballDrawn) this.drawBall(view.ball, dt);
+      const me = opts.mySlot && view.players.find(p => p.id === opts.mySlot);
+      if (me && opts.aim) this.drawAimGuide(me, view.ball, opts.aim);
       this.drawRings();
       this.drawParticles();
       ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); this.drawWeather(); ctx.restore();
@@ -620,11 +623,28 @@
           ctx.beginPath(); ctx.arc(p.x, p.y, p.r + 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (1 - p.dash));
           ctx.strokeStyle = 'rgba(255,255,255,.7)'; ctx.lineWidth = 2; ctx.stroke();
         }
-        // Charge bar under the feet while holding kick or lob.
+        // Charge (power) bar under the feet while holding kick or lob. Your own
+        // hold is timed locally so the meter reacts without lag (T-54).
+        const ag = this.aimGuide;
+        if (ag && ag.holding) p = Object.assign({}, p, { ch: Math.max(0.02, ag.charge) });
         if (p.ch > 0) {
           const w = 44, x0 = p.x - w / 2, y0 = feetY + 8;
           ctx.fillStyle = 'rgba(0,0,0,.6)'; ctx.fillRect(x0 - 1, y0 - 1, w + 2, 7);
           ctx.fillStyle = p.ch >= 1 ? '#ff5d5d' : '#ffd166'; ctx.fillRect(x0, y0, w * p.ch, 5);
+        }
+        // Stamina bar (T-53) under the feet (below the charge bar if it shows).
+        // Green when fresh, amber when low, red and blinking while tired.
+        if (p.stm !== undefined && this.rules && this.rules.sprintEnabled !== false) {
+          const w = 48, x0 = p.x - w / 2, y0 = feetY + (p.ch > 0 ? 16 : 8);
+          const s = Math.max(0, Math.min(1, p.stm));
+          const full = s >= 0.999 && !p.spr;
+          ctx.globalAlpha = full ? 0.45 : 1;
+          ctx.fillStyle = 'rgba(0,0,0,.65)'; ctx.fillRect(x0 - 1.5, y0 - 1.5, w + 3, 9);
+          const blink = p.tr && Math.sin(this.time * 14) > 0;
+          ctx.fillStyle = p.tr ? (blink ? '#ff5d5d' : '#a33') : s < 0.35 ? '#ff9f1c' : '#4ade80';
+          ctx.fillRect(x0, y0, w * s, 6);
+          if (p.spr) { ctx.fillStyle = 'rgba(255,255,255,.8)'; ctx.fillRect(x0 + w * s - 2, y0, 2, 6); }
+          ctx.globalAlpha = 1;
         }
         // Signature meter ready: pulsing gold ring.
         if (p.m >= 1 && !p.sp) {
@@ -632,6 +652,38 @@
           ctx.strokeStyle = 'rgba(255,209,102,.9)'; ctx.lineWidth = 3; ctx.stroke();
         }
       }
+    }
+
+    /**
+     * Aim guide (T-54): while kick or lob is held, an arrow from the ball (or
+     * from you, when the ball is not at your feet) toward the pointer. It
+     * grows and warms from yellow to red as the shot powers up; dashed for a lob.
+     */
+    drawAimGuide(me, ball, aim) {
+      if (!aim.holding || aim.x === null || aim.y === null) return;
+      const ctx = this.ctx;
+      const near = Math.hypot(ball.x - me.x, ball.y - me.y) < me.r + ball.r + 40;
+      const ox = near ? ball.x : me.x, oy = near ? ball.y : me.y;
+      let dx = aim.x - ox, dy = aim.y - oy; const d = Math.hypot(dx, dy);
+      if (d < 4) return;
+      dx /= d; dy /= d;
+      const c = Math.max(0, Math.min(1, aim.charge || 0));
+      const L = 46 + 150 * c, start = near ? ball.r + 4 : me.r + 6;
+      const x0 = ox + dx * start, y0 = oy + dy * start, x1 = ox + dx * (start + L), y1 = oy + dy * (start + L);
+      const col = c >= 1 ? '#ff5d5d' : c > 0.5 ? '#ff9f1c' : '#ffd166';
+      ctx.save();
+      ctx.globalAlpha = near ? 0.95 : 0.5;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(0,0,0,.45)'; ctx.lineWidth = 6;
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      ctx.strokeStyle = col; ctx.lineWidth = 3;
+      if (aim.lob) ctx.setLineDash([8, 7]);
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      ctx.setLineDash([]);
+      const hx = -dy, hy = dx, s = 9;
+      ctx.fillStyle = col;
+      ctx.beginPath(); ctx.moveTo(x1 + dx * s, y1 + dy * s); ctx.lineTo(x1 + hx * s * 0.7, y1 + hy * s * 0.7); ctx.lineTo(x1 - hx * s * 0.7, y1 - hy * s * 0.7); ctx.closePath(); ctx.fill();
+      ctx.restore();
     }
 
     drawBall(b, dt) {

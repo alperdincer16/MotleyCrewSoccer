@@ -130,7 +130,8 @@
     if (rules.suddenDeath) chip('Sudden death', 'Next goal wins if tied at full time');
     if (rules.chaosEvents) chip('🎲 Chaos', `A chaos event every ${rules.chaosEvery}s`);
     if (!rules.specials) chip('No signature moves', null, 'off');
-    if (!rules.dashEnabled) chip('No sprint / tackle', null, 'off');
+    if (!rules.dashEnabled) chip('No tackles', null, 'off');
+    if (rules.sprintEnabled === false) chip('No sprint', null, 'off');
     const adv = Object.keys(R).filter(k => R[k].group === 'advanced' && rules[k] !== R[k].def);
     if (adv.length) chip(`⚙ ${adv.length} custom`, adv.map(k => `${R[k].label}: ${rules[k] / (R[k].scale || 1)}`).join('\n'), 'custom');
     card.appendChild(chips);

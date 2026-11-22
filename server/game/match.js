@@ -28,7 +28,7 @@ const PASS_WINDOW = 3;          // seconds between a kick and the team-mate's to
 function len(x, y) { return Math.hypot(x, y); }
 function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 function rnd(a, b) { return a + Math.random() * (b - a); }
-function blankInput() { return { up: false, down: false, left: false, right: false, kick: false, dash: false, lob: false, skill: false, curve: 0, aimX: null, aimY: null }; }
+function blankInput() { return { up: false, down: false, left: false, right: false, kick: false, dash: false, sprint: false, lob: false, skill: false, curve: 0, aimX: null, aimY: null }; }
 
 class Match {
   /**
@@ -76,9 +76,11 @@ class Match {
           isBot: info.isBot !== false,
           x: 0, y: 0, vx: 0, vy: 0, r: PLAYER_RADIUS,
           input: blankInput(),
-          kickCooldown: 0, dashCooldown: 0, dashTime: 0, kickFlash: 0,
-          kickBuffer: 0,      // seconds left in which a recent kick press still counts
-          kickHeld: false,
+          kickCooldown: 0, dashCooldown: 0, dashTime: 0, kickFlash: 0, stamina: 1, tired: false, sprinting: false,
+          kickBuffer: 0,      // humans: seconds left in which a just-released kick/lob still fires (T-54)
+          kickHeld: false, lobHeld: false,
+          release: null,      // 'kick' | 'lob': which button was released (T-54)
+          releaseCharge: 0, releaseCurve: 0,
           chargeT: 0,         // seconds the kick (or lob) button has been held
           skillHeld: false, skillPress: false,
           meter: 0,           // signature-move meter 0..1
@@ -97,7 +99,10 @@ class Match {
   setHuman(slotId, name, look) { const p = this.player(slotId); if (p) { p.isBot = false; p.name = name; p.look = look || null; } }
   setBot(slotId) {
     const p = this.player(slotId);
-    if (p) { p.isBot = true; p.name = Teams.botName(this.sides[p.team], p.team, p.pos); p.input = blankInput(); p.look = null; }
+    if (p) {
+      p.isBot = true; p.name = Teams.botName(this.sides[p.team], p.team, p.pos); p.input = blankInput(); p.look = null;
+      p.kickHeld = p.lobHeld = false; p.release = null; p.kickBuffer = 0; p.chargeT = 0;
+    }
   }
   setInput(slotId, input) {
     const p = this.player(slotId);
@@ -105,15 +110,24 @@ class Match {
     p.input.up = !!input.up; p.input.down = !!input.down;
     p.input.left = !!input.left; p.input.right = !!input.right;
     p.input.dash = !!input.dash;
-    p.input.lob = !!input.lob;
+    p.input.sprint = !!input.sprint;
+    const prevCurve = p.input.curve;
     p.input.curve = Number.isFinite(input.curve) ? clamp(input.curve, -1, 1) : 0;
     const skill = !!input.skill;
     if (skill && !p.skillHeld) p.skillPress = true;
     p.skillHeld = skill;
-    const kick = !!input.kick;
-    if (kick && !p.kickHeld && !p.isBot) p.kickBuffer = FEEL.kickBuffer;   // humans: a press just before contact still counts
-    p.kickHeld = kick;
-    p.input.kick = kick;
+    // Humans kick on RELEASE (T-54): holding kick/lob powers it up, letting go
+    // fires it toward the pointer. A release just before contact still counts.
+    const kick = !!input.kick, lob = !!input.lob;
+    if (!p.isBot) {
+      const released = p.kickHeld && !kick ? 'kick' : p.lobHeld && !lob ? 'lob' : null;
+      if (released) {
+        p.release = released; p.kickBuffer = FEEL.kickBuffer; p.releaseCharge = p.chargeT;
+        p.releaseCurve = p.input.curve || prevCurve || 0;   // the sweep measured while the button was down
+      }
+    }
+    p.kickHeld = kick; p.lobHeld = lob;
+    p.input.kick = kick; p.input.lob = lob;
     p.input.aimX = Number.isFinite(input.aimX) ? clamp(input.aimX, -FIELD.goalDepth, W + FIELD.goalDepth) : null;
     p.input.aimY = Number.isFinite(input.aimY) ? clamp(input.aimY, 0, H) : null;
   }
@@ -130,6 +144,7 @@ class Match {
       p.x = p.team === 'red' ? x : W - x;
       p.y = p.team === 'red' ? f.fy * H : (1 - f.fy) * H;
       p.vx = 0; p.vy = 0; p.dashTime = 0;
+      p.stamina = 1; p.tired = false; p.sprinting = false;   // fresh legs after a goal (T-53)
     }
     this.possession = null;
     const b = this.ball;
@@ -227,6 +242,7 @@ class Match {
     p.kickCooldown = Math.max(0, p.kickCooldown - dt);
     p.kickFlash = Math.max(0, p.kickFlash - dt);
     p.kickBuffer = Math.max(0, p.kickBuffer - dt);
+    if (p.kickBuffer === 0) p.release = null;
     // Charge: holding kick (or lob) without kicking builds power. Humans only.
     if ((p.input.kick || p.input.lob) && !p.isBot) p.chargeT += dt; else p.chargeT = 0;
     const dashed = Physics.integratePlayer(p, p.input, this.rules, dt, this.effectState(p), this.ball, this.traits[p.team]);
@@ -539,8 +555,10 @@ class Match {
   }
 
   tryKick(p, dt) {
-    const wantsLob = p.input.lob;
-    const wants = p.input.kick || wantsLob || p.kickBuffer > 0;
+    // Bots kick the moment they want to; humans when they let go (T-54).
+    const human = !p.isBot;
+    const wants = human ? !!p.release && p.kickBuffer > 0 : (p.input.kick || p.input.lob);
+    const wantsLob = human ? p.release === 'lob' : (p.input.lob && !p.input.kick);
     if (!wants || p.kickCooldown > 0 || p.effects.frozen || p.effects.stun || p.effects.stumble) return;
     const b = this.ball;
     if (b.z > (p.pos === 'GK' ? FEEL.keeperReach : FEEL.headHeight)) return;
@@ -557,19 +575,25 @@ class Match {
       if (al > 1) {
         ax /= al; ay /= al;
         const dot = ax * nx + ay * ny;
-        // A ball under control goes where you aim; a scrambled one less so.
-        const wa = p.carrying ? FEEL.carryAim : 0.55;
-        if (dot > (p.carrying ? 0 : 0.2)) { nx = nx * (1 - wa) + ax * wa; ny = ny * (1 - wa) + ay * wa; const l = len(nx, ny) || 1; nx /= l; ny /= l; }
+        if (human && dot > -0.35) {
+          // A human's release goes where the pointer is (T-54), unless the
+          // ball is behind them; then it is a scuffed half-aim.
+          nx = ax; ny = ay;
+        } else {
+          // A ball under control goes where you aim; a scrambled one less so.
+          const wa = human ? 0.5 : p.carrying ? FEEL.carryAim : 0.55;
+          if (human || dot > (p.carrying ? 0 : 0.2)) { nx = nx * (1 - wa) + ax * wa; ny = ny * (1 - wa) + ay * wa; const l = len(nx, ny) || 1; nx /= l; ny /= l; }
+        }
       }
     }
     // Charge: 0 for a tap, 1 for a full hold.
-    const charge = clamp((p.chargeT - FEEL.chargeStart) / (FEEL.chargeFull - FEEL.chargeStart), 0, 1);
+    const charge = clamp(((human ? p.releaseCharge : p.chargeT) - FEEL.chargeStart) / (FEEL.chargeFull - FEEL.chargeStart), 0, 1);
     // Tackle (T-43): kicking a ball an opponent has on their foot.
     const pos = this.possession;
     const stealFrom = pos && pos.team !== p.team && this.tick - pos.lastTick <= 2 ? this.player(pos.slot) : null;
     let power = FEEL.kickSpeed * this.rules.kickPower * this.traits[p.team].kick * (1 + FEEL.chargeBonus * charge);
     let rocket = false, special = null, comboShot = false;
-    let spin = p.input.curve * FEEL.curveMax;
+    let spin = (human ? p.releaseCurve : p.input.curve) * FEEL.curveMax;
     if (p.effects.rocket) { power *= 2.2; delete p.effects.rocket; rocket = true; }
     if (b.effects.giant) power *= 0.8;
     delete b.effects.thunder; delete b.effects.fire; delete b.effects.laser;
@@ -583,7 +607,7 @@ class Match {
         power *= 1.2;
         // Bend toward goal: start aimed outside the target, let the spin bring it in.
         let gx = oppGoal.x - b.x, gy = oppGoal.y - b.y; const gl = len(gx, gy) || 1; gx /= gl; gy /= gl;
-        let sign = Math.sign(p.input.curve) || Math.sign(nx * gy - ny * gx) || (b.y < H / 2 ? 1 : -1) * this.attackDir(p.team);
+        let sign = Math.sign(human ? p.releaseCurve : p.input.curve) || Math.sign(nx * gy - ny * gx) || (b.y < H / 2 ? 1 : -1) * this.attackDir(p.team);
         const off = -sign * 0.38, c = Math.cos(off), sn = Math.sin(off);
         const rx = nx * c - ny * sn, ry = nx * sn + ny * c; nx = rx; ny = ry;
         spin = sign * FEEL.curveMax * 0.75;
@@ -600,7 +624,7 @@ class Match {
     const combo = this.combo[p.team];
     if (combo.ready) { power *= 1.3; combo.ready = false; combo.chain = 0; comboShot = true; b.effects.fire = 1.6; }
 
-    if (wantsLob && !p.input.kick) {
+    if (wantsLob) {
       b.vx = nx * power * FEEL.lobPower + p.vx * 0.3;
       b.vy = ny * power * FEEL.lobPower + p.vy * 0.3;
       b.vz = FEEL.lobLift * (1 + 0.35 * charge);
@@ -612,7 +636,7 @@ class Match {
     b.spin = clamp(spin, -FEEL.curveMax, FEEL.curveMax);
     b.owner = p.team;
     p.kickCooldown = FEEL.kickCooldown;
-    p.kickBuffer = 0;
+    p.kickBuffer = 0; p.release = null;
     p.kickFlash = 0.15;
     p.chargeT = 0;
     p.stats.kicks++;
@@ -944,6 +968,7 @@ class Match {
         fx: this.effectFlags(p),
         dash: p.dashCooldown > 0 ? Math.round(p.dashCooldown / FEEL.dashCooldown * 100) / 100 : 0,
         dc: Math.round(p.dashCooldown * 100) / 100, dtm: Math.round(p.dashTime * 1000) / 1000,
+        stm: Math.round(p.stamina * 100) / 100, tr: p.tired ? 1 : 0, spr: p.sprinting ? 1 : 0,
         kf: p.kickFlash > 0 ? 1 : 0, bot: p.isBot ? 1 : 0, name: p.name,
         m: Math.round(p.meter * 100) / 100, sp: p.armed || 0,
         ch: p.chargeT > FEEL.chargeStart ? Math.round(Math.min(1, (p.chargeT - FEEL.chargeStart) / (FEEL.chargeFull - FEEL.chargeStart)) * 100) / 100 : 0,

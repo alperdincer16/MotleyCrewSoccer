@@ -454,7 +454,7 @@ class BotBrain {
   /** Returns an input object for this tick. */
   update(match, dt) {
     const me = match.player(this.slotId);
-    const input = { up: false, down: false, left: false, right: false, kick: false, dash: false, aimX: null, aimY: null };
+    const input = { up: false, down: false, left: false, right: false, kick: false, dash: false, sprint: false, aimX: null, aimY: null };
     if (!me || match.state === 'countdown' || match.state === 'goal' || match.state === 'ended') return input;
 
     this.difficulty = this.baseDifficulty * (match.rules.botSkill || 1);
@@ -505,6 +505,19 @@ class BotBrain {
     }
     input.kick = this.wantKick && this.kickSafeNow(match, me);
     input.dash = this.wantDash && match.rules.dashEnabled;
+    // Sprint (T-53): only on long runs, and stop well before the tank is dry
+    // so a bot still has legs for the next phase. Hysteresis avoids flicker.
+    if (match.rules.sprintEnabled !== false && match.state === 'play') {
+      // No sprinting back toward our own goal inside our half: arriving at
+      // full pace there is how own goals happen.
+      const st = me.stamina === undefined ? 1 : me.stamina;
+      const ownX = me.team === 'red' ? 0 : W;
+      const homeward = Math.abs(this.target.x - ownX) < Math.abs(me.x - ownX) - 40 && Math.abs(me.x - ownX) < W / 2;
+      if (homeward) this.sprinting = false;
+      else if (this.sprinting) this.sprinting = d > 200 && st > 0.25;
+      else this.sprinting = d > 300 && st > 0.6 && !me.tired;
+    } else this.sprinting = false;
+    input.sprint = this.sprinting;
     input.skill = !!this.wantSkill && match.tick % 2 === 0;   // a fresh press every other tick
     if (this.aim) { input.aimX = this.aim.x; input.aimY = this.aim.y; }
     return input;

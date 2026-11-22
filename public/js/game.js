@@ -40,8 +40,8 @@
       this.active = false;
       this.keys = {};
       this.mouse = { x: null, y: null, down: false, right: false, trail: [] };
-      this.touch = { dx: 0, dy: 0, kick: false, dash: false, lob: false, skill: false };
-      this.latch = { kick: false, lob: false, skill: false };
+      this.touch = { dx: 0, dy: 0, kick: false, dash: false, sprint: false, lob: false, skill: false };
+      this.latch = { kick: false, lob: false, skill: false, dash: false };
       this.lastInputSent = 0;
       this.lastInputJson = '';
       this.raf = null;
@@ -286,7 +286,8 @@
       // Local-clock time at which the server finished this snapshot's tick.
       const tickLocal = snap.t * tickMs + this.clock.offset - owl;
       const horizon = now + owl;                                         // when our current input lands
-      const body = { x: sp.x, y: sp.y, vx: sp.vx, vy: sp.vy, r: sp.r, dashCooldown: sp.dc || 0, dashTime: sp.dtm || 0 };
+      const body = { x: sp.x, y: sp.y, vx: sp.vx, vy: sp.vy, r: sp.r, dashCooldown: sp.dc || 0, dashTime: sp.dtm || 0,
+        stamina: sp.stm === undefined ? 1 : sp.stm, tired: !!sp.tr };
       const st = { speed: !!(sp.fx & FX.speed), shrink: !!(sp.fx & FX.shrink), frozen: !!(sp.fx & (FX.frozen | FX.stun)) };
       // Slides are a server-only impulse: don't predict through them.
       if (sp.fx & FX.slide) return null;
@@ -306,13 +307,13 @@
     inputAt(localTime) {
       const h = this.inputHistory;
       for (let i = h.length - 1; i >= 0; i--) if (h[i].t <= localTime) return h[i].input;
-      return h.length ? h[0].input : { up: false, down: false, left: false, right: false, dash: false };
+      return h.length ? h[0].input : { up: false, down: false, left: false, right: false, dash: false, sprint: false };
     }
     recordInput(now, input) {
       const h = this.inputHistory;
       const last = h[h.length - 1];
-      if (!last || last.input.up !== input.up || last.input.down !== input.down || last.input.left !== input.left || last.input.right !== input.right || last.input.dash !== input.dash) {
-        h.push({ t: now, input: { up: input.up, down: input.down, left: input.left, right: input.right, dash: input.dash } });
+      if (!last || last.input.up !== input.up || last.input.down !== input.down || last.input.left !== input.left || last.input.right !== input.right || last.input.dash !== input.dash || last.input.sprint !== input.sprint) {
+        h.push({ t: now, input: { up: input.up, down: input.down, left: input.left, right: input.right, dash: input.dash, sprint: input.sprint } });
       }
       while (h.length > 2 && h[1].t < now - 2000) h.shift();
     }
@@ -622,9 +623,17 @@
         tr.push({ t: now, x: p.x, y: p.y });
         while (tr.length && tr[0].t < now - 160) tr.shift();
       });
-      c.addEventListener('mousedown', (e) => { if (e.button === 0) { this.mouse.down = true; this.latch.kick = true; } if (e.button === 2) { this.mouse.right = true; this.latch.lob = true; } });
+      // Left click kicks; right click tackles (T-53). The latch makes a quick
+      // click still reach the server even if it is shorter than one frame.
+      c.addEventListener('mousedown', (e) => {
+        if (e.button === 0) { this.mouse.down = true; this.latch.kick = true; }
+        if (e.button === 2) { e.preventDefault(); this.mouse.right = true; this.latch.dash = true; }
+      });
       window.addEventListener('mouseup', (e) => { if (e.button === 2) this.mouse.right = false; else this.mouse.down = false; });
+      // No browser menu on right click anywhere over the match (canvas, HUD, touch controls).
       c.addEventListener('contextmenu', (e) => e.preventDefault());
+      const screen = c.closest('.screen') || c.parentElement;
+      if (screen) screen.addEventListener('contextmenu', (e) => { if (this.active && e.target.tagName !== 'INPUT') e.preventDefault(); });
       this.el.chatForm.addEventListener('submit', (e) => {
         e.preventDefault();
         const text = this.el.chatInput.value.trim();
@@ -659,7 +668,7 @@
         b.addEventListener('pointerdown', (e) => { e.preventDefault(); this.touch[key] = true; });
         ['pointerup', 'pointercancel', 'pointerleave'].forEach(ev => b.addEventListener(ev, () => { this.touch[key] = false; }));
       };
-      hold('mKick', 'kick'); hold('mDash', 'dash'); hold('mLob', 'lob'); hold('mSkill', 'skill');
+      hold('mKick', 'kick'); hold('mDash', 'dash'); hold('mSprint', 'sprint'); hold('mLob', 'lob'); hold('mSkill', 'skill');
       const emoteBtn = document.getElementById('mEmote'), wheel = document.getElementById('emoteWheel');
       emoteBtn.addEventListener('click', () => wheel.classList.toggle('hidden'));
       for (const em of MCS.EMOTES) {
@@ -717,18 +726,31 @@
         left: !!(k.KeyA || k.ArrowLeft) || this.touch.dx < -0.3,
         right: !!(k.KeyD || k.ArrowRight) || this.touch.dx > 0.3,
         kick: !!(k.Space || k.KeyX) || this.mouse.down || this.touch.kick || this.latch.kick,
-        dash: !!(k.KeyC || k.ShiftLeft || k.ShiftRight) || this.touch.dash,   // C is the sprint / tackle key; Shift still works
-        lob: !!k.KeyF || this.mouse.right || this.touch.lob || this.latch.lob,
+        dash: !!k.KeyC || this.mouse.right || this.touch.dash || this.latch.dash,   // tackle: right click or C (T-53)
+        sprint: !!(k.ShiftLeft || k.ShiftRight) || this.touch.sprint,                // hold to sprint, uses stamina (T-53)
+        lob: !!k.KeyF || this.touch.lob || this.latch.lob,
         skill: !!(k.KeyE || k.KeyQ) || this.touch.skill || this.latch.skill,
         aimX: this.mouse.x, aimY: this.mouse.y,
       };
+    }
+    /** Hold-to-power state of the kick / lob buttons for the aim guide (T-54). */
+    aimState(now) {
+      if (!this.holdStart || !this.mySlot) return null;
+      const F = Physics.FEEL, held = (now - this.holdStart) / 1000;
+      const charge = Math.max(0, Math.min(1, (held - F.chargeStart) / (F.chargeFull - F.chargeStart)));
+      return { holding: true, charge, lob: this.holdLob, x: this.mouse.x, y: this.mouse.y };
     }
     sendInput(now) {
       if (!this.mySlot || !this.net.id) return;
       const input = this.currentInput();
       input.curve = input.kick || input.lob ? this.currentCurve(input) : 0;
+      // Kick / lob fire on release (T-54): remember when the hold began.
+      const holding = !!(input.kick || input.lob);
+      if (holding && !this.holdStart) this.holdStart = now;
+      if (!holding) this.holdStart = 0;
+      this.holdLob = !!input.lob && !input.kick;
       this.recordInput(now, input);
-      const json = JSON.stringify([input.up, input.down, input.left, input.right, input.kick, input.dash, input.lob, input.skill]);
+      const json = JSON.stringify([input.up, input.down, input.left, input.right, input.kick, input.dash, input.sprint, input.lob, input.skill]);
       const changed = json !== this.lastInputJson;
       const anyHeld = json.includes('true');
       // Changes go out immediately; while something is held we stream at
@@ -737,7 +759,7 @@
       if (changed || now - this.lastInputSent >= interval) {
         this.net.send('input', input);
         this.lastInputSent = now; this.lastInputJson = json;
-        this.latch.kick = this.latch.lob = this.latch.skill = false;
+        this.latch.kick = this.latch.lob = this.latch.skill = this.latch.dash = false;
       }
     }
 
@@ -756,7 +778,8 @@
           const k = Math.exp(-dt * 10);
           this.predErr.x *= k; this.predErr.y *= k;
           const players = view.players.map(p => p.id === this.mySlot
-            ? Object.assign({}, p, { x: pred.x + this.predErr.x, y: pred.y + this.predErr.y, vx: pred.vx, vy: pred.vy, r: pred.r, dash: pred.dashCooldown > 0 ? pred.dashCooldown / Physics.FEEL.dashCooldown : 0 })
+            ? Object.assign({}, p, { x: pred.x + this.predErr.x, y: pred.y + this.predErr.y, vx: pred.vx, vy: pred.vy, r: pred.r, dash: pred.dashCooldown > 0 ? pred.dashCooldown / Physics.FEEL.dashCooldown : 0,
+                stm: pred.stamina, tr: pred.tired ? 1 : 0, spr: pred.sprinting ? 1 : 0 })
             : p);
           view = Object.assign({}, view, { players });
           this.lastPred = pred; this.lastPredAt = now;
@@ -769,7 +792,7 @@
         if (t > this.celebration.duration) this.celebration = null;
         else if (t >= 0) celebration = Object.assign({}, this.celebration, { t });
       }
-      this.renderer.draw(view, { mySlot: this.mySlot, dt, replay: !!(view && view._replay), celebration });
+      this.renderer.draw(view, { mySlot: this.mySlot, dt, replay: !!(view && view._replay), celebration, aim: this.aimState(now) });
       if (this.el.netInfo && (now - (this._netInfoAt || 0)) > 500) {
         this._netInfoAt = now;
         this.el.netInfo.textContent = `${this.net.pingMs} ms · ${Math.round(this.interp.delay)} ms buffer`;

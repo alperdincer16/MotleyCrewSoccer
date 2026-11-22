@@ -81,6 +81,7 @@ test('a carried ball is kicked toward the aim point', () => {
   for (let i = 0; i < 20; i++) { m.setInput('red:MID', { right: true }); m.step(DT); }
   assert.ok(p.carrying, 'player has the ball under control');
   m.setInput('red:MID', { right: true, kick: true, aimX: m.ball.x + 200, aimY: m.ball.y - 200 });
+  m.setInput('red:MID', { right: true, kick: false, aimX: m.ball.x + 200, aimY: m.ball.y - 200 });   // humans kick on release (T-54)
   m.step(DT);
   const ang = Math.atan2(-m.ball.vy, m.ball.vx) * 180 / Math.PI;
   assert.ok(ang > 25, `kick went up toward the aim (angle ${ang.toFixed(0)}°)`);
@@ -90,7 +91,7 @@ test('the carry grip does not fight a fresh kick or a dash', () => {
   const m = play(); const p = m.player('red:MID');
   p.x = 400; p.y = 350; p.vx = 0; p.vy = 0;
   m.ball.x = p.x + p.r + m.ball.r + 1; m.ball.y = 350;
-  m.setInput('red:MID', { kick: true }); m.step(DT);
+  m.setInput('red:MID', { kick: true }); m.setInput('red:MID', { kick: false }); m.step(DT);
   const v0 = m.ball.vx;
   for (let i = 0; i < 6; i++) { m.setInput('red:MID', {}); m.step(DT); }
   assert.ok(v0 > 400 && m.ball.vx > v0 * 0.85, `kick kept its pace (${v0.toFixed(0)} -> ${m.ball.vx.toFixed(0)})`);

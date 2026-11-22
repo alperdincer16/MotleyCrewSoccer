@@ -70,6 +70,8 @@ recorded here, in the header comment of each source file, and in the
 | T-50 | Leave match: ✕ Leave button on the pitch (and Esc) with a confirm dialog; a bot takes over the slot and the others get a chat notice | Sam Okafor (UI) / Priya Natarajan (server) | Done |
 | T-51 | Switch player: Tab key, a ⇄ button on the pitch and a SWITCH touch button hand your player to a bot and take over the bot team-mate on the ball or nearest to it; stats you earned before the switch still count for XP | Priya Natarajan | Done |
 | T-52 | Auto switch: you always control whoever on your team has the ball. When a bot team-mate receives a pass, wins a tackle or traps a loose ball, a human on that team takes it over (with several humans, the passer follows the pass, else the nearest one); a human's player is never taken; manual switching still works | Priya Natarajan | Done |
+| T-53 | Tackle and sprint split: right click (or C, touch TACKLE) tackles with no browser menu; holding Shift (touch SPRINT) sprints ~38% faster on a stamina bar shown under your player that drains in ~3.3 s, refills when you stop (faster standing still), and leaves you briefly tired if you empty it; separate host rules for each; bots sprint only on long runs and never back toward their own goal | Diego Ferreira (feel) / Priya Natarajan (bots) / Sam Okafor (controls, bar) / Rosa Vidal (tests) | Done |
+| T-54 | Release to shoot: humans kick and lob when they let go of the button, not on press; holding powers the shot up (meter under your feet) and an arrow shows where it goes; the ball goes toward the mouse pointer; a release just before reaching the ball still counts; bots unchanged | Diego Ferreira (server) / Sam Okafor (aim guide) / Rosa Vidal (tests) | Done |
 
 ## Working agreements
 
