@@ -156,13 +156,13 @@ class Room {
   isHost(client) { return client.id === this.hostId; }
 
   // ---- Pre-match actions -------------------------------------------------
-  pickSlot(client, slotId) {
+  pickSlot(client, slotId, { auto = false } = {}) {
     const p = this.players.get(client.id);
     if (!p || !MCS.parseSlot(slotId)) return this.error(client, 'bad_slot', 'Unknown slot');
     if (this.slots[slotId] && this.slots[slotId] !== client.id) return this.error(client, 'slot_taken', 'That slot is taken');
     if (this.status === 'ended') return this.error(client, 'match_over', 'Wait for the rematch');
     if (p.slot) { this.bankStats(p); this.slots[p.slot] = null; if (this.match) this.match.setBot(p.slot); }
-    p.slot = slotId; this.slots[slotId] = client.id; p.ready = false;
+    p.slot = slotId; this.slots[slotId] = client.id; p.ready = false; p.autoSwitched = auto;
     if (this.match) {
       this.match.setHuman(slotId, p.name, p.look);
       // Taking over mid-match: only what you do from now on counts for your XP.
@@ -186,6 +186,38 @@ class Room {
     if (!target) return this.error(client, 'no_switch', 'No free team-mate to switch to');
     p.lastSwitch = now;
     this.pickSlot(client, target);
+  }
+
+  /**
+   * Auto switch (T-52): when a bot on a team with humans wins the ball (a
+   * pass is received, a tackle is won, a loose ball is trapped), a human on
+   * that team takes over the new carrier, so you always control whoever has
+   * the ball. Only bot slots are ever taken; a human's player is never
+   * touched. With several humans on a team, the one who passed follows the
+   * pass, else the human nearest the ball who isn't on it themselves.
+   */
+  autoSwitch() {
+    const m = this.match, pos = m && m.possession;
+    if (!pos || this.status !== 'playing') return;
+    const key = pos.slot + '@' + pos.since;
+    if (key === this._autoSeen) return;
+    const prev = this._autoPrev;
+    this._autoSeen = key; this._autoPrev = { slot: pos.slot, team: pos.team };
+    if (this.slots[pos.slot]) return;                     // a human already has it
+    const carrier = m.player(pos.slot);
+    if (!carrier) return;
+    let best = null, bestD = Infinity;
+    for (const p of this.players.values()) {
+      if (!p.slot || !p.connected || MCS.parseSlot(p.slot).team !== pos.team) continue;
+      const q = m.player(p.slot);
+      if (!q) continue;
+      // The passer follows the ball; otherwise the nearest human team-mate.
+      const d = prev && prev.slot === p.slot ? -1 : Math.hypot(q.x - carrier.x, q.y - carrier.y);
+      if (d < bestD) { bestD = d; best = p; }
+    }
+    if (!best) return;
+    best.lastSwitch = Date.now();
+    this.pickSlot(best.client, pos.slot, { auto: true });
   }
 
   /** The bot team-mate a switch from `slotId` lands on, or null. */
@@ -350,6 +382,7 @@ class Room {
       if (p && p.isBot) m.setInput(p.id, brain.update(m, TICK_DT));
     }
     m.step(TICK_DT);
+    this.autoSwitch();
     this.tickCount++;
     if (this.tickCount % SNAP_EVERY === 0 || m.state === 'ended') {
       const snap = m.snapshot();
@@ -430,7 +463,7 @@ class Room {
       id: this.id, name: this.name, inviteCode: this.inviteCode, locked: !!this.password,
       hostId: this.hostId, status: this.status, rules: this.rules, slots: this.slots, sides: this.sides,
       mode: this.mode, tournament: this.tournament ? this.tournament.view() : null,
-      players: [...this.players.values()].map(p => ({ id: p.id, name: p.name, slot: p.slot, ready: p.ready, connected: p.connected, look: p.look || null })),
+      players: [...this.players.values()].map(p => ({ id: p.id, name: p.name, slot: p.slot, ready: p.ready, connected: p.connected, look: p.look || null, auto: !!p.autoSwitched })),
     };
   }
 

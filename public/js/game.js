@@ -138,8 +138,9 @@
       const newSlot = me ? me.slot : null;
       if (newSlot !== this.mySlot) {
         this.lastPred = null; this.predErr = { x: 0, y: 0 }; this.inputHistory = [];
-        // Switched to a team-mate mid-match (T-51): say who you are now.
-        if (newSlot && this.mySlot && room.status === 'playing' && newSlot.split(':')[0] === this.mySlot.split(':')[0]) {
+        // Switched to a team-mate mid-match (T-51): say who you are now. Auto
+        // switches to the ball carrier (T-52) happen on every pass, so no toast.
+        if (newSlot && this.mySlot && !(me && me.auto) && room.status === 'playing' && newSlot.split(':')[0] === this.mySlot.split(':')[0]) {
           this.toast(`⇄ You now control the ${({ GK: 'goalkeeper', DEF: 'defender', MID: 'midfielder', FWD: 'forward' })[MCS.parseSlot(newSlot).pos] || MCS.parseSlot(newSlot).pos}`, newSlot.split(':')[0]);
         }
       }

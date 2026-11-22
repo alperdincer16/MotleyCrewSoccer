@@ -77,6 +77,7 @@ same network / a deployed host) to play online. Only one dependency (`ws`).
 | Lob | `F` (touch: LOB) |
 | Signature move | `E` (touch: SKILL) when the meter is full |
 | Switch player | `Tab` or the ⇄ button (touch: ⇄ SWITCH): take over the bot team-mate nearest the ball |
+| Auto switch | You automatically take over whichever team-mate wins the ball (pass received, tackle won). Never takes another human's player |
 | Quick shouts | `1`–`6` (touch: 💬) |
 | Chat | `Enter` |
 | Mute | `M` |
