@@ -81,7 +81,10 @@ test('charged kicks are harder than taps; curve bends the ball; lobs fly over pl
   setUpKick(ch, b, {});
   b.x -= 80;
   for (let i = 0; i < 45; i++) { ch.setInput(b.id, { kick: true, aimX: 1100, aimY: 350 }); ch.step(DT); }   // wind up
-  for (let i = 0; i < 60 && b.kickCooldown === 0; i++) { ch.setInput(b.id, { kick: true, right: true, aimX: 1100, aimY: 350 }); ch.step(DT); }
+  // Humans kick on release (T-54): walk up still holding, let go at the ball.
+  for (let i = 0; i < 60 && Math.hypot(ch.ball.x - b.x, ch.ball.y - b.y) > b.r + ch.ball.r + 4; i++) { ch.setInput(b.id, { kick: true, right: true, aimX: 1100, aimY: 350 }); ch.step(DT); }
+  ch.setInput(b.id, { kick: false, aimX: 1100, aimY: 350 }); ch.step(DT);
+  assert.ok(b.kickCooldown > 0, 'released kick fired');
   const chSpeed = Math.hypot(ch.ball.vx, ch.ball.vy);
   assert.ok(chSpeed > tapSpeed * 1.2, `charged ${chSpeed} vs tap ${tapSpeed}`);
 

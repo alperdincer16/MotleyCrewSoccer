@@ -23,7 +23,7 @@ seat a human doesn't take.
   stays at your feet while you dribble and turns with you, and a kick off
   a controlled ball goes where you aim.
 * **Real shooting**: hold kick to charge, sweep the mouse sideways to bend
-  it, `F` or right-click to lob over players. Keepers can claw lobs; a ball
+  it, `F` to lob over players. Keepers can claw lobs; a ball
   over the bar hits the frame.
 * **Combo passes**: three completed passes in a row set the next shot on fire.
 * **Location and weather**, picked when you create a game: National
@@ -70,11 +70,11 @@ same network / a deployed host) to play online. Only one dependency (`ws`).
 | Action | Keys |
 |--------|------|
 | Move | `W A S D` or arrow keys (touch: left joystick) |
-| Kick | `Space` / `X` or mouse click, aim with the mouse |
-| Sprint / tackle | `C` (or `Shift`) |
-| Charged shot | hold kick, release on contact |
+| Kick / pass | hold left mouse (or `Space` / `X`) to power up, point with the mouse, release to shoot; the ball goes toward the pointer |
+| Tackle | right mouse button or `C` (touch: TACKLE) |
+| Sprint | hold `Shift` (touch: SPRINT); drains the stamina bar under your player, which refills when you stop sprinting |
 | Curve | sweep the mouse sideways as you kick, or run across the ball |
-| Lob | `F` or right mouse button (touch: LOB) |
+| Lob | `F` (touch: LOB) |
 | Signature move | `E` (touch: SKILL) when the meter is full |
 | Switch player | `Tab` or the ⇄ button (touch: ⇄ SWITCH): take over the bot team-mate nearest the ball |
 | Quick shouts | `1`–`6` (touch: 💬) |

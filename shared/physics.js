@@ -26,10 +26,19 @@
     kickSpeed: 640,          // ball speed from a kick at kickPower 1.0
     kickRange: 8,            // extra reach beyond touching
     kickCooldown: 0.28,
-    kickBuffer: 0.15,        // a kick press this long before contact still fires
+    kickBuffer: 0.2,         // humans kick on RELEASE (T-54); a release this long before contact still fires
     dashImpulse: 560,
     dashCooldown: 2.2,
     dashDuration: 0.16,
+    // Sprint and stamina (T-53): hold sprint to run faster until the tank is
+    // empty; it refills when you stop sprinting (faster when standing still).
+    sprintSpeed: 1.38,       // top-speed multiplier while sprinting
+    sprintAccel: 1.25,       // acceleration multiplier while sprinting
+    staminaDrain: 0.3,       // per second of sprinting (full tank ≈ 3.3 s)
+    staminaRegen: 0.16,      // per second while moving without sprinting (≈ 6 s to refill)
+    staminaRestRegen: 0.26,  // per second while standing still
+    staminaRecover: 0.3,     // an emptied tank must refill to this before you can sprint again
+    tiredSpeed: 0.92,        // top-speed multiplier while recovering from an empty tank
     ballMaxSpeed: 1050,
     ballPlayerBounce: 0.55,
     playerPlayerBounce: 0.35,
@@ -142,9 +151,29 @@
   function radiusFor(st) { return st.shrink ? PLAYER_RADIUS * 0.6 : PLAYER_RADIUS; }
 
   /**
+   * Stamina (T-53). Drains while the player holds sprint and is moving,
+   * refills otherwise. Running the tank dry leaves the player "tired": no
+   * sprinting (and a touch slower) until it is back to staminaRecover.
+   * Returns true if the player is sprinting this step.
+   */
+  function updateStamina(p, input, rules, dt, st, moving) {
+    if (!Number.isFinite(p.stamina)) p.stamina = 1;
+    if (p.tired && p.stamina >= FEEL.staminaRecover) p.tired = false;
+    const sprinting = rules.sprintEnabled !== false && !!input.sprint && moving && !st.frozen && !p.tired && p.stamina > 0;
+    if (sprinting) {
+      p.stamina = Math.max(0, p.stamina - FEEL.staminaDrain * dt);
+      if (p.stamina === 0) p.tired = true;
+    } else {
+      p.stamina = Math.min(1, p.stamina + (moving ? FEEL.staminaRegen : FEEL.staminaRestRegen) * dt);
+    }
+    p.sprinting = sprinting;
+    return sprinting;
+  }
+
+  /**
    * Advance one player body by dt.
-   * p: { x, y, vx, vy, r, dashCooldown, dashTime }
-   * input: { up, down, left, right, dash }
+   * p: { x, y, vx, vy, r, dashCooldown, dashTime, stamina, tired }
+   * input: { up, down, left, right, dash, sprint }
    * st: { speed, shrink, frozen }  (effect state)
    * aim: { x, y } fallback dash direction when standing still (the ball)
    * traits: { speed, kick, dash } national team modifiers (optional)
@@ -164,15 +193,18 @@
     }
     const moving = dx !== 0 || dy !== 0;
     const arena = arenaOf(rules);
-    const mul = speedMul(rules, st, traits) * arena.speed;
+    const sprinting = updateStamina(p, input, rules, dt, st, moving);
+    const sprintMul = sprinting ? FEEL.sprintSpeed : (p.tired ? FEEL.tiredSpeed : 1);
+    const mul = speedMul(rules, st, traits) * arena.speed * sprintMul;
     if (moving) {
       const l = len(dx, dy); dx /= l; dy /= l;
       // Turning against your own momentum bites harder, so cuts and stops are sharp.
       const sp0 = len(p.vx, p.vy);
       const against = sp0 > 1 ? -(p.vx * dx + p.vy * dy) / sp0 : 0;   // 1 = straight back
       const turn = against > 0 ? 1 + (FEEL.turnAssist - 1) * against : 1;
-      p.vx += dx * FEEL.playerAccel * arena.accel * mul * turn * dt;
-      p.vy += dy * FEEL.playerAccel * arena.accel * mul * turn * dt;
+      const acc = FEEL.playerAccel * arena.accel * mul * turn * (sprinting ? FEEL.sprintAccel / FEEL.sprintSpeed : 1);
+      p.vx += dx * acc * dt;
+      p.vy += dy * acc * dt;
     }
 
     let dashed = false;
@@ -289,5 +321,5 @@
     if (rules && rules.arena === 'bumpers') collideBumpers(p, rules, tick, 0.5);
   }
 
-  return { FEEL, arenaOf, ballDragFor, bumpersAt, collideBumpers, speedMul, radiusFor, integratePlayer, confineToArena, collidePosts, kickoffConfine, confinePlayer };
+  return { FEEL, arenaOf, ballDragFor, bumpersAt, collideBumpers, speedMul, radiusFor, updateStamina, integratePlayer, confineToArena, collidePosts, kickoffConfine, confinePlayer };
 });

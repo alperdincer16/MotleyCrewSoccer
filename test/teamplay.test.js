@@ -70,12 +70,12 @@ test('a tackle on a dribbler emits a steal event and the victim stumbles', () =>
   m.possession.protectUntil = m.tick;
   opp.x = m.ball.x + opp.r + m.ball.r + 2; opp.y = m.ball.y; opp.kickCooldown = 0;
   m.events.length = 0;
-  m.setInput('blue:DEF', { kick: true }); m.step(DT);
+  m.setInput('blue:DEF', { kick: true }); m.setInput('blue:DEF', { kick: false }); m.step(DT);
   const steal = m.events.find(e => e.type === 'steal');
   assert.ok(steal, 'steal event');
   assert.equal(steal.slot, 'blue:DEF'); assert.equal(steal.victim, 'red:MID');
   assert.ok(me.effects.stumble > 0, 'victim stumbles');
   m.events.length = 0;
-  m.setInput('red:MID', { kick: true }); m.step(DT);
+  m.setInput('red:MID', { kick: true }); m.setInput('red:MID', { kick: false }); m.step(DT);
   assert.ok(!m.events.some(e => e.type === 'kick' && e.slot === 'red:MID'), 'a stumbling player cannot kick straight back');
 });
