@@ -69,6 +69,7 @@ recorded here, in the header comment of each source file, and in the
 | T-49 | Bigger pitch: field 1200×700 → 1400×820 (~17%), canvas and markings follow; goals, formations and bot shape stay proportional | Diego Ferreira | Done |
 | T-50 | Leave match: ✕ Leave button on the pitch (and Esc) with a confirm dialog; a bot takes over the slot and the others get a chat notice | Sam Okafor (UI) / Priya Natarajan (server) | Done |
 | T-51 | Switch player: Tab key, a ⇄ button on the pitch and a SWITCH touch button hand your player to a bot and take over the bot team-mate on the ball or nearest to it; stats you earned before the switch still count for XP | Priya Natarajan | Done |
+| T-52 | Auto switch: you always control whoever on your team has the ball. When a bot team-mate receives a pass, wins a tackle or traps a loose ball, a human on that team takes it over (with several humans, the passer follows the pass, else the nearest one); a human's player is never taken; manual switching still works | Priya Natarajan | Done |
 
 ## Working agreements
 
